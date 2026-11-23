@@ -85,6 +85,9 @@ class TaskInput:
     # from_dict 与前端表单都按关键字传入，不受字段顺序影响。
     subject_lock: str = ""
     subject_reference_path: str = ""
+    # 用户在曲库里点选的具体曲目 id（可空）。非空时生成阶段优先用它，
+    # 不再按「情绪 + 风格」从同类里随机挑——这解决"选了某首却放了同类的另一首"。
+    music_track_id: str = ""
 
     def __post_init__(self) -> None:
         # b89698f briefly exposed the new voice controls before the legacy
@@ -125,7 +128,10 @@ class TaskInput:
             "duration": int(raw.get("duration", 30)),
             "style": str(raw.get("style", "诗意纪实")).strip(),
             "voice": str(raw.get("voice", "女声")).strip(),
-            "music_mood": str(raw.get("music_mood", "舒缓")).strip(),
+            # 缺省「无音乐」：曲库当前无已授权曲目，默认挑一个情绪会让
+            # 所有未显式指定音乐的 API 任务在音频阶段失败。前端默认项也是「无音乐」。
+            "music_mood": str(raw.get("music_mood") or "无音乐").strip(),
+            "music_track_id": str(raw.get("music_track_id") or "").strip(),
             "include_ai_label": bool(raw.get("include_ai_label", True)),
             "custom_brief": str(raw.get("custom_brief", "")).strip(),
             "subject_lock": str(raw.get("subject_lock", "")).strip(),
@@ -165,6 +171,8 @@ class TaskInput:
             raise ValueError("subject_lock 长度不能超过 500 个字符")
         if len(values["subject_reference_path"]) > 1000:
             raise ValueError("subject_reference_path 长度不能超过 1000 个字符")
+        if len(values["music_track_id"]) > 200:
+            raise ValueError("music_track_id 长度不能超过 200 个字符")
         shot_count = values["shot_count"]
         if shot_count != SHOT_COUNT_AUTO and not (
             SHOT_COUNT_RANGE[0] <= shot_count <= SHOT_COUNT_RANGE[1]
@@ -252,6 +260,45 @@ class Shot:
     entity_id: str = ""
     shot_tag: str = ""
     library_asset_id: str = ""
+    # 精修阶段产出的英文素材检索查询（主查询 + 备选）；空列表表示未精修，
+    # 素材阶段退回知识库 keywords_en 检索。
+    search_queries: list[str] = field(default_factory=list)
+    # —— 候选池流程（explore 模式）——
+    # 用户选中的候选；为空表示本镜不是从候选池来的（direct 模式或旧任务）。
+    candidate_id: str = ""
+    # 结构化画面规格（主体/环境光线/构图/色彩/动态/锚点），详述阶段产出。
+    prompt_spec: dict[str, Any] = field(default_factory=dict)
+    # 意图锚点：候选继承 + 本镜补充，语义验收按它算覆盖率。
+    intent_anchors: list[str] = field(default_factory=list)
+    # 本镜特有的回避项，渲染时并入负向词。
+    must_avoid: list[str] = field(default_factory=list)
+    # 详述阶段渲染出的最终 prompt（与生成时同一组合逻辑），供前端预览与追溯。
+    composed_prompt: str = ""
+
+
+@dataclass
+class ShotCandidate:
+    """候选池里的一个大方向镜头。
+
+    候选是"用户选择即意图"的载体：imagery 锚点会被强制继承到详述阶段，
+    防止第二轮生成把用户选中的方向漂移掉。
+    """
+
+    id: str
+    role: str          # opening / subject / detail / person / closing
+    title: str
+    hook: str
+    imagery: list[str] = field(default_factory=list)
+    entity_id: str = ""
+    place: str = ""
+    time_of_day: str = ""
+    shot_size: str = ""
+    motion: str = ""
+    why: str = ""
+    duration_hint: float = 5.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 @dataclass
@@ -310,6 +357,15 @@ class Task:
     narration: str = ""
     shots: list[Shot] = field(default_factory=list)
     assets: list[AssetRecord] = field(default_factory=list)
+    # —— 候选池流程 ——
+    # creation_mode: "direct"（一次出脚本，旧流程）| "explore"（10 选 4 → 详述）
+    creation_mode: str = "direct"
+    shot_candidates: list[ShotCandidate] = field(default_factory=list)
+    # 用户提交的选择与排序：[{"candidate_id": "...", "order": 1}, ...]
+    selection: list[dict[str, Any]] = field(default_factory=list)
+    candidates_arc: dict[str, str] = field(default_factory=dict)
+    # 用户计划拍的镜头数（候选池 2.5 倍放大的基数），前端用它显示「N 选 M」
+    candidate_target: int = 0
     audio: dict[str, Any] = field(default_factory=dict)
     render: dict[str, Any] = field(default_factory=dict)
     visual_qa: dict[str, Any] = field(default_factory=dict)

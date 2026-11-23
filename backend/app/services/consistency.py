@@ -201,9 +201,16 @@ def subject_lock(style_ctx: dict[str, Any] | None = None) -> dict[str, Any]:
     }
 
 
-def subject_prompt(style_ctx: dict[str, Any] | None = None) -> str:
+def subject_prompt(style_ctx: dict[str, Any] | None = None, compact: bool = False) -> str:
     lock = subject_lock(style_ctx)
     ref = "；参考图作为身份/形制基准" if lock["reference_sha256"] else ""
+    if compact:
+        # 结构化详述已经写清主体材质与痕迹，这里只保留身份锚点。
+        # 完整版（约 110 字）会把 220–340 字的组合上限挤爆。
+        return (
+            f"主体锁定[{lock['id']}]：{lock['descriptor']}{ref}；"
+            "全片同一主体，不得替换或变形"
+        )
     return (
         f"全片主体锁定[{lock['id']}]：{lock['descriptor']}{ref}。"
         f"每个镜头保持相同{lock['traits']}，只改变机位、景别、动作与光线，"
@@ -231,14 +238,70 @@ def compose_prompt(
     shot: dict[str, Any] | None = None,
     index: int = 1,
 ) -> str:
-    """组装可验收的分层 prompt：风格 → 主体锁定 → 本镜内容 → 生成约束。"""
+    """组装可验收的分层 prompt：风格 → 主体锁定 → 本镜内容 → 生成约束。
+
+    结构化详述（shot.prompt_spec 存在）改用紧凑版：正文已写清主体材质、光线、
+    构图与色彩，再叠一整段通用风格前缀和完整主体锁定会把有效信息稀释掉，
+    长度也会超预算（实测完整版组合后 321 字）。
+    """
     body = str(visual_prompt or "").strip()
     style_ctx = style_ctx or {}
+    shot = shot or {}
+    has_spec = isinstance(shot, dict) and bool(shot.get("prompt_spec"))
+    if has_spec:
+        prefix = str(style_ctx.get("style_prefix") or "").strip() or "浙江文旅纪实竖屏"
+        lock = subject_prompt(style_ctx, compact=True)
+        constraints = shot_constraints(shot or {"order": index})
+        # 正文常以句号结尾，去掉尾标点避免拼出「。。」
+        trimmed = body.rstrip("。；;，, ")
+        parts = [part for part in (prefix, lock, f"本镜画面：{trimmed}" if trimmed else "", constraints) if part]
+        return "。".join(parts)
     prefix = style_prefix(style_ctx)
     lock = subject_prompt(style_ctx)
     constraints = shot_constraints(shot or {"order": index})
     parts = [part for part in (prefix, lock, f"本镜画面：{body}" if body else "", constraints) if part]
     return "。".join(parts)
+
+
+# 画面 prompt 五要素的启发式标记词。这是概率性完备性门（和知识库注入同一
+# 性质），不是语义理解：缺元素直接打回重写，命中标记词只说明"写了这类内容"。
+# 标记词按"文旅画面描述里出现即代表该要素被表达过"挑选，避免生僻匹配。
+VISUAL_PROMPT_ELEMENT_MARKERS: dict[str, tuple[str, ...]] = {
+    # 光线/时段/天气：晨、夕、夜、阴晴雨雾、光源方向
+    "light": ("光", "晨", "夕", "黄昏", "暮", "夜", "阴", "晴", "雨", "雾", "灯", "影", "月光", "逆光", "顺光", "薄雾", "天色"),
+    # 构图/景别/机位
+    "composition": ("远景", "全景", "中景", "近景", "特写", "航拍", "俯", "仰", "平视", "机位", "构图", "前景", "背景", "留白", "景别", "侧看", "对岸"),
+    # 色彩
+    "color": ("色", "暖", "冷", "青", "灰", "金", "蓝", "绿", "红", "白", "黛", "水墨", "彩"),
+    # 画面内动态（不含镜头运动——镜头运动由 shot_constraints 统一给出）
+    "motion": ("推", "拉", "摇", "移", "跟", "环绕", "飘", "摇曳", "流动", "涌", "荡", "泛起", "闪", "走", "落", "垂", "晃", "翻"),
+}
+
+
+def visual_prompt_elements(text: str) -> dict[str, bool]:
+    """检查画面 prompt 的五要素完备性：主体（非空）/光线/构图/色彩/动态。
+
+    返回每个要素的布尔结果；"subject" 只检查非空（主体是否写对属于语义层，
+    由后续 VLM 语义验收负责，这里不做）。缺要素的键为 False。
+    """
+    value = str(text or "").strip()
+    result: dict[str, bool] = {"subject": bool(value)}
+    for element, markers in VISUAL_PROMPT_ELEMENT_MARKERS.items():
+        result[element] = any(marker in value for marker in markers)
+    return result
+
+
+def missing_visual_prompt_elements(text: str) -> list[str]:
+    """返回缺失的要素名（中文标签），用于打回重写的反馈。"""
+    labels = {
+        "subject": "主体及其外观细节",
+        "light": "环境与光线（时段/天气/光源方向）",
+        "composition": "构图与景别（景别/机位/前后景）",
+        "color": "色彩（色温/主色）",
+        "motion": "画面内动态",
+    }
+    elements = visual_prompt_elements(text)
+    return [labels[key] for key, ok in elements.items() if not ok]
 
 
 def grade(style_ctx: dict[str, Any] | None = None) -> dict[str, float]:

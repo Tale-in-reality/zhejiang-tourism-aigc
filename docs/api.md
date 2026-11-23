@@ -59,6 +59,53 @@ The response has `status: "draft"` and contains `title`, `summary`, `cta`, `narr
 `subject_lock` is a generation condition, not a style hint. The same canonical subject ID and description are embedded into every shot prompt. `subject_reference_path` is optional; when set to a readable image path, the image adapter sends it as a reference-image condition and records its SHA-256 for objective verification.
 If the model returns invalid JSON or a script that fails validation, the server retries once with the exact error and asks for a corrected full JSON response. Validation checks shot count, required fields, positive shot durations, the transition whitelist, and that each shot's `subtitle` matches its `narration` after whitespace/punctuation normalization. A second failure is reported as a task error; it is not silently replaced by offline output.
 
+### explore 模式（候选池 → 选择 → 详述）
+
+请求体加 `"creation_mode": "explore"` 时，本端点不返回分镜，而是返回 10 个大方向候选：
+
+```json
+{
+  "creation_mode": "explore",
+  "city": "杭州",
+  "theme": "西湖春游",
+  "duration": 30,
+  "style": "诗意纪实"
+}
+```
+
+响应 `status: "candidates_ready"`，含：
+
+- `candidates_arc`：叙事骨架（opening / development / climax / closing）
+- `shot_candidates[]`：`id`、`role`（opening/subject/detail/person/closing）、`title`、`hook`、`imagery[]`（2–4 个可拍摄锚点）、`place`、`time_of_day`、`shot_size`、`motion`、`why`、`duration_hint`
+
+候选生成有三条硬校验，不过会带问题清单重写（最多 2 轮）：结构配额（2/4/2/1/1）、方向互斥（主体+景别+时段不得重复）、锚点可拍摄（不含“美景/氛围/震撼”这类词）与地点在所选城市。
+
+## `PATCH /api/tasks/{task_id}/selection`
+
+提交候选选择与顺序（explore 模式）：
+
+```json
+{"selection": [{"candidate_id": "c3", "order": 1}, {"candidate_id": "c1", "order": 2}]}
+```
+
+- 硬错误返回 400：未知候选、重复选择、数量不在 2–12。
+- 缺开场/收束/细节只返回 `warnings`，不阻断（用户自由选择优先）。
+- 成功时任务状态变为 `selected`。
+
+## `POST /api/tasks/{task_id}/detail`
+
+为已选镜头生成结构化详述（explore 模式），返回：
+
+```json
+{
+  "shot_count": 4,
+  "gate": {"ok": true, "problems": [], "composed_lengths": {"shot_1": 298}},
+  "composed": {"shot_1": "…最终发给生成模型的完整 prompt…"}
+}
+```
+
+每条 `Shot` 会写入 `prompt_spec`（主体/环境光线/构图/色彩/动态）、`intent_anchors`（候选锚点 + 本镜补充）、`must_avoid`、`composed_prompt`。校验门检查：字段完整、锚点继承（候选 imagery 必须全部出现在 must_include）、五要素、正文 110–180 字、组合后 220–340 字、时段↔光线自洽、地点在城市内、AI 腔词表、字幕=旁白、旁白总字数预算。不合格只把出问题的镜头打回重写（最多 2 轮），仍不合格时 `gate.ok=false` 并在事件里列出问题，状态仍为 `draft` 供人工修正。
+
 ## `GET /api/tasks/{task_id}`
 
 Returns the complete task, including:

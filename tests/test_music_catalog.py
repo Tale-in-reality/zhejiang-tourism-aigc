@@ -78,3 +78,73 @@ class MusicCatalogTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PinnedMusicTrackTests(unittest.TestCase):
+    """用户点了具体曲目：必须放这一首，而不是同情绪里的随机一首。"""
+
+    def _catalog(self, root: Path) -> Path:
+        (root / "calm-a.wav").write_bytes(b"RIFFtiny")
+        (root / "calm-b.wav").write_bytes(b"RIFFtiny")
+        catalog = root / "catalog.json"
+        catalog.write_text(json.dumps({
+            "tracks": [
+                {"id": "calm-a", "file": "calm-a.wav", "moods": ["舒缓"],
+                 "styles": ["诗意纪实"], "license": "原创", "author": "作者A",
+                 "usage_scope": "比赛展示", "approved": True},
+                {"id": "calm-b", "file": "calm-b.wav", "moods": ["舒缓"],
+                 "styles": ["诗意纪实"], "license": "原创", "author": "作者B",
+                 "usage_scope": "比赛展示", "approved": True},
+            ]
+        }, ensure_ascii=False), encoding="utf-8")
+        return catalog
+
+    def test_pinned_track_is_exactly_used(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog = self._catalog(root)
+            for _ in range(6):
+                result = select_music(
+                    task_audio={}, mood="舒缓", style="诗意纪实", duration=10,
+                    catalog_path=catalog, music_dir=root, track_id="calm-b",
+                )
+                self.assertEqual(result.id, "calm-b")
+                self.assertTrue(result.event.get("pinned"))
+
+    def test_pinned_track_ignores_mood_mismatch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog = self._catalog(root)
+            result = select_music(
+                task_audio={}, mood="热烈", style="诗意纪实", duration=10,
+                catalog_path=catalog, music_dir=root, track_id="calm-a",
+            )
+            self.assertEqual(result.id, "calm-a", "锁定曲目不受情绪筛选限制")
+
+    def test_unknown_pinned_track_falls_back_with_note(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog = self._catalog(root)
+            result = select_music(
+                task_audio={}, mood="舒缓", style="诗意纪实", duration=10,
+                catalog_path=catalog, music_dir=root, track_id="missing-id",
+            )
+            self.assertIn(result.id, {"calm-a", "calm-b"})
+            self.assertIn("pinned_missing", result.event)
+
+
+class TaskInputMusicTrackTests(unittest.TestCase):
+    def test_music_track_id_roundtrip(self):
+        from backend.app.models import TaskInput
+
+        value = TaskInput.from_dict(
+            {"city": "杭州", "theme": "主题", "music_track_id": "  bgm-x  "}
+        )
+        self.assertEqual(value.music_track_id, "bgm-x")
+        self.assertEqual(TaskInput.from_dict({"city": "杭州", "theme": "主题"}).music_track_id, "")
+
+    def test_music_track_id_length_guard(self):
+        from backend.app.models import TaskInput
+
+        with self.assertRaises(ValueError):
+            TaskInput.from_dict({"city": "杭州", "theme": "主题", "music_track_id": "x" * 201})

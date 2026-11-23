@@ -178,8 +178,35 @@ def _candidate(platform, raw, kind, size, duration, anchors, city, query, terms=
 
 
 class StockProvider:
-    def __init__(self, services):
+    def __init__(self, services, vision=None, location_check=True, max_checks=2):
         self.services = [service for service in services if service[1]]
+        # 地域校验（可选）：搜"西湖"极可能返回别处的湖。有视觉模型时抽 1 帧问
+        # "是否与目标城市/地标特征相符"，不符就换下一个候选。未配置模型时如实
+        # 记为 unconfigured，不冒充已验证。
+        self.vision = vision
+        self.location_check = bool(location_check)
+        self.max_checks = max(0, int(max_checks))
+
+    def _verify_location(self, path, city, landmark):
+        """抽 1 帧做地点特征判定。返回 (status, note)。"""
+        from ..services import semantic_qa
+
+        try:
+            frames = semantic_qa.sample_frames(Path(path), 1, Path(path).parent / "stock_checks")
+            instruction = (
+                f"这张图/视频帧来自图库检索，候选地点是「{city}{landmark}」。"
+                "请只输出 JSON：{\"location_plausible\":true/false,\"note\":\"一句话依据\"}。"
+                "判断画面中的自然与建筑特征是否与这个地点相符；"
+                "画面只拍到天空、水面纹理或无法判断时填 true。"
+            )
+            raw = self.vision.analyze(frames, instruction, max_tokens=200)
+            plausible = raw.get("location_plausible")
+            if isinstance(plausible, str):
+                plausible = plausible.strip().lower() in {"true", "1", "yes", "是"}
+            note = str(raw.get("note") or "").strip()[:160]
+            return ("verified" if plausible is not False else "rejected"), note
+        except Exception as exc:  # noqa: BLE001 - 校验失败不阻断取材，如实记录
+            return "error", str(exc)[:160]
 
     def create_or_find(
         self, task_id, shot, output_dir, theme_color, accent, style_ctx=None
@@ -236,6 +263,7 @@ class StockProvider:
         used = ctx.get("stock_ids", set())
         lock = ctx.get("stock_lock") or threading.Lock()
         errors = []
+        checks = 0
         output_dir.mkdir(exist_ok=True, parents=True)
         for kind in ("video", "image"):
             ranked = {}
@@ -308,12 +336,26 @@ class StockProvider:
                         used.discard(uid)
                     errors.append(f"{uid}: {type(exc).__name__}")
                     continue
+                location = {"status": "unconfigured", "note": "未配置视觉模型或已关闭地域校验"}
+                if self.vision and self.location_check and checks < self.max_checks:
+                    status, note = self._verify_location(path, city, landmark)
+                    checks += 1
+                    location = {"status": status, "note": note}
+                    if status == "rejected":
+                        path.unlink(missing_ok=True)
+                        with lock:
+                            used.discard(uid)
+                        errors.append(
+                            f"{uid}: 地点特征与{landmark or city}不符（{note}）"
+                        )
+                        continue
                 return dict(
                     asset,
                     external_id=uid,
                     id=f"{task_id}_{shot['id']}_{uid}",
                     url=f"/media/{task_id}/assets/{path.name}",
                     local_path=str(path),
+                    location_verification=location,
                 )
         raise RuntimeError(
             "素材库没有可用的独立镜头。" + " / ".join(dict.fromkeys(errors))[:400]

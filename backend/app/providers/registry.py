@@ -749,8 +749,23 @@ def build_provider_registry(settings: Any, storage: Any) -> ProviderRegistry:
         ("cloud-t2v",), lambda: _ai_t2v.available,
     ))
     sources = [("pixabay", settings.pixabay_api_key, ""), ("pexels", settings.pexels_api_key, settings.pexels_base_url.rstrip("/"))]
-    registry.register(ProviderSpec("asset", "pixabay", "Pixabay 视频与照片", lambda: StockProvider(sources[:1]), "优先实拍视频", available=lambda: bool(settings.pixabay_api_key)))
-    registry.register(ProviderSpec("asset", "stock", "在线实拍素材（Pixabay / Pexels）", lambda: StockProvider(sources), "按地点、画幅和时长选片，视频优先", available=lambda: any(s[1] for s in sources)))
+
+    # 地域校验只在开了语义验收且配置了视觉模型时生效；未配置时 stock 内部
+    # 把校验记为 unconfigured，不影响取材。
+    def _stock_provider(services):
+        vision = None
+        if getattr(settings, "semantic_qa_enabled", True):
+            from .vision import build_vision_provider
+
+            vision = build_vision_provider(settings)
+        return StockProvider(
+            services,
+            vision=vision,
+            location_check=bool(getattr(settings, "semantic_location_check", True)),
+        )
+
+    registry.register(ProviderSpec("asset", "pixabay", "Pixabay 视频与照片", lambda: _stock_provider(sources[:1]), "优先实拍视频", available=lambda: bool(settings.pixabay_api_key)))
+    registry.register(ProviderSpec("asset", "stock", "在线实拍素材（Pixabay / Pexels）", lambda: _stock_provider(sources), "按地点、画幅和时长选片，视频优先", available=lambda: any(s[1] for s in sources)))
     registry.register(ProviderSpec(
         "asset",
         "pexels",

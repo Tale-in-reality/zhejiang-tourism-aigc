@@ -85,8 +85,14 @@ def select_music(
     cloud_enabled: bool = False,
     cloud_provider: MusicProviderProtocol | None = None,
     output_dir: Path | None = None,
+    track_id: str = "",
 ) -> MusicResult:
-    """Select one approved track for the whole video in deterministic order."""
+    """Select one approved track for the whole video in deterministic order.
+
+    track_id 非空时优先按 id 精确取曲（用户在曲库里点的是哪首就放哪首），
+    不再接受"同情绪的另一首"。找不到或不满足授权/文件条件时退回情绪匹配，
+    并在 event 里记 pinned_missing，避免用户以为选错了。
+    """
     uploaded = task_audio.get("music_upload")
     if isinstance(uploaded, dict):
         upload_path = Path(str(uploaded.get("path", "")))
@@ -99,6 +105,21 @@ def select_music(
             and style in upload_styles
         ):
             return _result_from_record(uploaded, upload_path.resolve(), "task-upload")
+
+    # 用户指定了具体曲目：精确命中就用它，不受情绪/风格匹配限制。
+    pinned_note = ""
+    if track_id:
+        for record in load_music_catalog(catalog_path, music_dir):
+            if str(record.get("id") or "") == track_id or str(record.get("file") or "") == track_id:
+                result = _result_from_record(record, Path(record["resolved_path"]), "local-catalog")
+                result.event = {
+                    "type": "music-match",
+                    "provider": "local-catalog",
+                    "pinned": True,
+                    "chosen": result.id,
+                }
+                return result
+        pinned_note = f"指定曲目 {track_id} 不在可用曲库（未授权或文件缺失），已按情绪匹配"
 
     # 同情绪多曲时随机选一首：曲库有几十首，固定取第一首会让每支片子配同一段音乐。
     # 选中的曲目 id 会进 MusicResult，manifest 的 music_match 能追到实际用了哪首。
@@ -116,6 +137,8 @@ def select_music(
             "candidates": len(matches),
             "chosen": result.id,
         }
+        if pinned_note:
+            result.event["pinned_missing"] = pinned_note
         return result
 
     if cloud_enabled:

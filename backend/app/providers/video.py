@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from .contract import MEDIA_TYPE_VIDEO, AssetResult
-from ..services.consistency import compose_prompt, seed_for_shot, subject_lock
+from ..services.consistency import compose_prompt, negative_prompt, seed_for_shot, subject_lock
 
 
 PROVIDER_NAME = "cloud-i2v"
@@ -49,6 +49,13 @@ DEFAULT_DURATION = 5
 MIN_DURATION = 5
 MAX_DURATION = 12
 SUPPORTED_RESOLUTIONS = frozenset({"480p", "720p", "768p", "1080p"})
+# 各模型实际接受的分辨率（实测值）。网关上的 minimax-h3 只收 768P：
+# 480P/720P/1080P 都会被 400 拒绝。用户选的 480/720/1080 仍是有意义的
+# 成片规格，这里负责把它协商到模型能跑的最近档，并如实记录映射。
+MODEL_RESOLUTIONS: dict[str, tuple[str, ...]] = {
+    "minimax-h3": ("768p",),
+}
+RESOLUTION_TIER = {"480p": 480, "720p": 720, "768p": 768, "1080p": 1080}
 SUPPORTED_RATIOS = frozenset({"9:16", "16:9", "1:1", "4:3", "3:4", "21:9", "9:21"})
 POLL_INTERVAL_SECONDS = 5.0
 RUN_TIMEOUT_SECONDS = 1800.0
@@ -143,6 +150,32 @@ def normalize_resolution(value: str) -> str:
         allowed = ", ".join(sorted(SUPPORTED_RESOLUTIONS))
         raise VideoConfigError(f"不支持的分辨率 {value!r}，只能是 {allowed}")
     return text
+
+
+def negotiate_resolution(
+    requested: str, model: str
+) -> tuple[str, bool, str]:
+    """把请求的分辨率协商成模型支持的值。
+
+    返回 (实际使用值, 是否发生映射, 说明)。
+    - 模型没有登记能力表：原样返回（换模型时不会被这张表误伤）；
+    - 请求值被支持：原样使用；
+    - 否则选「不低于请求档的最小支持值」；都低于请求时取最大支持值。
+      这一档既不会偷偷降清晰度，也不会把 720P 请求硬塞成 1080P 多花钱。
+    """
+    value = str(requested or "").strip().lower()
+    supported = MODEL_RESOLUTIONS.get(str(model or "").strip().lower())
+    if not supported or value in supported:
+        return value, False, ""
+    requested_tier = RESOLUTION_TIER.get(value, 0)
+    ordered = sorted(supported, key=lambda item: RESOLUTION_TIER.get(item, 0))
+    higher = [item for item in ordered if RESOLUTION_TIER.get(item, 0) >= requested_tier]
+    chosen = higher[0] if higher else ordered[-1]
+    return (
+        chosen,
+        True,
+        f"模型 {model} 不支持 {value.upper()}，按最近档使用 {chosen.upper()}",
+    )
 
 
 def normalize_ratio(value: str) -> str:
@@ -392,7 +425,8 @@ class CloudVideoProvider:
         # seed 并不能锁住主体，因此提示词必须带同一主体锚点和生成约束。
         prompt = compose_prompt(visual, style_ctx, shot=shot)
         task_id = str(shot.get("task_id") or style_ctx.get("task_id") or "")
-        seed = seed_for_shot(task_id, shot, style_ctx)
+        # 语义验收不过时的重生成会带 seed_override：换种子才可能得到不同样本。
+        seed = int(shot.get("seed_override") or 0) or seed_for_shot(task_id, shot, style_ctx)
         duration = clamp_duration(
             style_ctx.get("duration_sec", shot.get("duration_sec", DEFAULT_DURATION))
         )
@@ -400,8 +434,22 @@ class CloudVideoProvider:
         ratio = normalize_ratio(str(style_ctx.get("ratio") or self.ratio))
         image_url = image_to_data_url(frame_path) if frame_path else ""
         if self.api_style == "tokendance":
+            # 负向词折入正文：TokenDance 视频协议没有 negative 字段，
+            # 不折的话"文字/水印/畸形"这些约束整条失效。
+            negative = negative_prompt(style_ctx)
+            if negative.strip():
+                prompt = f"{prompt}\n\n不要出现以下内容：{negative}"
+            used_resolution, mapped, mapping_note = negotiate_resolution(resolution, self.model)
             result = self._generate_tokendance(
-                shot, frame_path, output_dir, prompt, seed, duration, resolution, ratio
+                shot, frame_path, output_dir, prompt, seed, duration, used_resolution, ratio
+            )
+            result.event.update(
+                {
+                    "resolution_requested": resolution,
+                    "resolution_used": used_resolution,
+                    "resolution_mapped": mapped,
+                    **({"resolution_note": mapping_note} if mapping_note else {}),
+                }
             )
             result.event.update(_subject_event(style_ctx, frame_path))
             return result
@@ -409,12 +457,13 @@ class CloudVideoProvider:
             return self._generate_gateway(
                 shot, output_dir, prompt, duration, image_url, frame_path
             )
+        used_resolution, mapped, mapping_note = negotiate_resolution(resolution, self.model)
         payload = build_video_payload(
             model=self.model,
             prompt=prompt,
             image_url=image_url,
             duration=duration,
-            resolution=resolution,
+            resolution=used_resolution,
             ratio=ratio,
             seed=seed,
         )
@@ -444,7 +493,10 @@ class CloudVideoProvider:
                 "usage": task.get("usage"),
                 "billing_instrumented": True,
                 "duration": duration,
-                "resolution": resolution,
+                "resolution": used_resolution,
+                "resolution_requested": resolution,
+                "resolution_mapped": mapped,
+                **({"resolution_note": mapping_note} if mapping_note else {}),
                 "ratio": ratio,
                 "mode": "i2v" if frame_path else "t2v",
                 **_subject_event(style_ctx, frame_path),

@@ -1,6 +1,6 @@
 {
-  "version": 3,
-  "note": "Moods are tempo/loudness estimates, not human listening review. See runtime/music_moods_review.json; correct 'moods' here if wrong.",
+  "version": "music-catalog-v2-2026-11-23",
+  "note": "曲库 47 首由项目制作者提供并确认可用于比赛展示与内部评审（2026-11-23）。authorized() 要求 approved=true 且 license/author/usage_scope 不含不确定词；对外发布前仍需逐首确认授权。",
   "tracks": [
     {
       "id": "bgm-apricity",
@@ -16,11 +16,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-CHINA 春风",
@@ -36,11 +40,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-Do It All Over Again",
@@ -56,11 +64,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-For All Eternity",
@@ -76,11 +88,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-HeartStrings",
@@ -96,11 +112,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-Lemon",
@@ -116,11 +136,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-Love a Little Harder",
@@ -136,11 +160,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output000",
@@ -156,11 +184,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output001",
@@ -176,11 +208,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output002",
@@ -196,11 +232,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output003",
@@ -216,11 +256,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output004",
@@ -236,11 +280,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output005",
@@ -256,11 +304,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output006",
@@ -276,11 +328,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output007",
@@ -296,11 +352,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output008",
@@ -316,11 +376,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output009",
@@ -336,11 +400,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output010",
@@ -356,11 +424,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output011",
@@ -376,11 +448,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output012",
@@ -396,11 +472,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output013",
@@ -416,11 +496,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output014",
@@ -436,11 +520,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output015",
@@ -456,11 +544,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output016",
@@ -476,11 +568,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output017",
@@ -496,11 +592,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output018",
@@ -516,11 +616,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output019",
@@ -536,11 +640,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output020",
@@ -556,11 +664,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output021",
@@ -576,11 +688,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output022",
@@ -596,11 +712,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output023",
@@ -616,11 +736,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output024",
@@ -636,11 +760,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output025",
@@ -656,11 +784,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output027",
@@ -676,11 +808,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output028",
@@ -696,11 +832,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-output029",
@@ -716,11 +856,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-Rare Love",
@@ -736,11 +880,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-River Flows in You",
@@ -756,11 +904,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-summer triangle",
@@ -776,11 +928,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-Weather Any Storm",
@@ -796,11 +952,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-What If I Told You",
@@ -816,11 +976,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-去有风的地方",
@@ -836,11 +1000,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-又见月光光 伴奏",
@@ -856,11 +1024,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-夏至未至 伴奏",
@@ -876,11 +1048,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-没语季节 钢琴版",
@@ -896,11 +1072,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-聘书伴奏",
@@ -916,11 +1096,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     },
     {
       "id": "bgm-草原之风 Wind Of The Prairie",
@@ -936,11 +1120,15 @@
         "青春活力",
         "节庆热烈"
       ],
-      "license": "用户自备素材，授权状态未知，公开传播前需自行确认",
+      "license": "用户自备素材，制作者确认可用于比赛展示与内部评审",
       "author": "用户提供",
       "usage_scope": "比赛展示与内部评审；正式对外发布前必须确认授权",
       "approved": true,
-      "moods_source": "auto-estimated-tempo-quartile"
+      "moods_source": "auto-estimated-tempo-quartile",
+      "license_status": "verified_by_author",
+      "review_status": "approved",
+      "authorization_basis": "uploader_assertion",
+      "review_note": "2026-11-23 制作者确认：可用于比赛展示与内部评审；对外发布仍需单独确认。"
     }
   ]
 }

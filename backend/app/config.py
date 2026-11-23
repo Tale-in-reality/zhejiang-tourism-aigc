@@ -118,6 +118,23 @@ class Settings:
     visual_qa_enabled: bool = _env("VISUAL_QA_ENABLED", "true").lower() in {"1", "true", "yes"}
     visual_qa_strict: bool = _env("VISUAL_QA_STRICT", "false").lower() in {"1", "true", "yes"}
     visual_qa_min_video_shots: int = max(0, int(_env("VISUAL_QA_MIN_VIDEO_SHOTS", "4") or 4))
+    # —— 语义验收（VLM）——
+    # 未配置 VISION_MODEL 时语义层明确报 unconfigured，不把"没检查"记成"通过"。
+    # 只配了 VISION_MODEL 时，base/key 回落到 LLM_*（多数 OpenAI 兼容网关同一套凭据）。
+    semantic_qa_enabled: bool = _env("SEMANTIC_QA_ENABLED", "true").lower() in {"1", "true", "yes"}
+    vision_base_url: str = _env("VISION_BASE_URL")
+    vision_api_key: str = _env("VISION_API_KEY")
+    vision_model: str = _env("VISION_MODEL")
+    vision_timeout_seconds: int = max(10, int(_env("VISION_TIMEOUT_SECONDS", "60") or 60))
+    semantic_min_subject_score: float = float(_env("SEMANTIC_MIN_SUBJECT_SCORE", "3") or 3)
+    # 语义验收不过时的自动重生成次数上限（每镜）。付费调用，默认 1 次，最多 2 次。
+    semantic_regen_attempts: int = max(0, min(2, int(_env("SEMANTIC_REGEN_ATTEMPTS", "1") or 1)))
+    semantic_max_frames: int = max(1, min(5, int(_env("SEMANTIC_MAX_FRAMES", "3") or 3)))
+    # 意图锚点覆盖率阈值：必现锚点低于该比例即判不通过。
+    semantic_min_coverage: float = float(_env("SEMANTIC_MIN_COVERAGE", "0.8") or 0.8)
+    semantic_location_check: bool = _env("SEMANTIC_LOCATION_CHECK", "true").lower() in {"1", "true", "yes"}
+    # true：语义不过的镜头直接让任务失败（正式发布用）；false：标红转人工复核，任务继续。
+    semantic_qa_strict: bool = _env("SEMANTIC_QA_STRICT", "false").lower() in {"1", "true", "yes"}
     music_dir: Path = PROJECT_ROOT / _env("MUSIC_DIR", "runtime/music")
     music_catalog_path: Path = _project_path(
         "MUSIC_CATALOG_PATH", r"runtime\music\catalog.json"

@@ -250,7 +250,9 @@ class CloudImageProvider:
         prompt = compose_prompt(visual, style_ctx, shot=shot)
         negative = negative_prompt(style_ctx)
         task_id = str(shot.get("task_id") or style_ctx.get("task_id") or "")
-        seed = seed_for_shot(task_id, shot, style_ctx)
+        # 语义验收不过时上层带 seed_override 重画：换种子 + 改 prompt 才有新样本，
+        # 沿用同一个确定性种子只会得到同一张被判失败的图。
+        seed = int(shot.get("seed_override") or 0) or seed_for_shot(task_id, shot, style_ctx)
         reference_path = str(
             shot.get("subject_reference_path")
             or style_ctx.get("subject_reference_path")
@@ -275,7 +277,27 @@ class CloudImageProvider:
             reference_image=reference_image,
             reference_field=str(style_ctx.get("image_reference_field") or "image"),
         )
-        raw = request_image(f"{self.base_url}/images/generations", payload, self.api_key)
+        reference_fallback = ""
+        try:
+            raw = request_image(f"{self.base_url}/images/generations", payload, self.api_key)
+        except Exception as exc:
+            # 有些网关不支持在 generations 里带参考图（实测 TokenDance 直接 404）。
+            # 带参考图的请求失败时，退化为纯文生图重试一次：首帧宁可少一张参考，
+            # 也不能让整条 ai-video 因为首帧缺失而失败。
+            if not reference_image:
+                raise
+            reference_fallback = f"带参考图生成失败，已退化为纯文生图：{exc}"
+            payload = build_image_payload(
+                prompt,
+                model=self.model,
+                size=str(style_ctx.get("size") or self.size),
+                seed=seed,
+                negative=negative,
+                api_style=self.api_style,
+                reference_image="",
+                reference_field="",
+            )
+            raw = request_image(f"{self.base_url}/images/generations", payload, self.api_key)
         target = Path(output_dir)
         target.mkdir(parents=True, exist_ok=True)
         shot_id = str(shot.get("id") or f"shot_{shot.get('order', 1)}")
@@ -300,6 +322,7 @@ class CloudImageProvider:
                 "subject_id": subject_lock(style_ctx)["id"],
                 "subject_reference_used": bool(reference_image),
                 "subject_reference_path": reference_path,
+                **({"reference_fallback": reference_fallback} if reference_fallback else {}),
                 "cost_reported": self.cost_per_call > 0,
             },
         )

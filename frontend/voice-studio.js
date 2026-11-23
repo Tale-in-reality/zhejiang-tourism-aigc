@@ -165,32 +165,43 @@ function bindVoiceStudio(task) {
     clearTimeout(voiceStudioTimer);
     voiceStudioTimer = setTimeout(()=>requestVoicePlan(task.id), 350);
   };
-  $(".draft-editor").addEventListener("input", event => {
+  // 分步工作台里声音区在 .voice-studio 内，旧的 .draft-editor 容器已不存在；
+  // 绑定到声音面板自身，缺失时跳过（避免整页渲染因一次绑空而报错）。
+  const voicePanel = $(".voice-studio");
+  if (voicePanel) voicePanel.addEventListener("input", event => {
     if (event.target.dataset.inputField === "voice") {
-      $("[data-input-field='voice_engine']").value = event.target.selectedOptions[0]?.dataset.engine || "configured";
+      const engineField = $("[data-input-field='voice_engine']");
+      if (engineField) engineField.value = event.target.selectedOptions[0]?.dataset.engine || "configured";
     }
     if (event.target.dataset.inputField === "voice_engine") {
       const voice = $("[data-input-field='voice']");
       const engine = event.target.value;
-      const match = Array.from(voice.options).find(option => option.dataset.engine === engine);
+      const match = voice ? Array.from(voice.options).find(option => option.dataset.engine === engine) : null;
       if (match && voice.selectedOptions[0]?.dataset.engine !== engine) voice.value = match.value;
     }
     if(event.target.matches("[data-input-field], [data-shot-field]")) changed();
   });
   $$("[data-voice-preset]").forEach(el => el.addEventListener("click", ()=>{
-    $("[data-input-field='voice']").value = el.dataset.voicePreset;
-    $("[data-input-field='voice_engine']").value = "edge";
-    $("[data-input-field='voice_style']").value = el.dataset.voiceStyle;
+    const voiceField = $("[data-input-field='voice']");
+    const engineField = $("[data-input-field='voice_engine']");
+    const styleField = $("[data-input-field='voice_style']");
+    if (voiceField) voiceField.value = el.dataset.voicePreset;
+    if (engineField) engineField.value = "edge";
+    if (styleField) styleField.value = el.dataset.voiceStyle;
     changed();
   }));
-  $("[data-voice-upload]").addEventListener("click", ()=>{
-    $("[data-input-field='voice_engine']").value = "upload";
-    $("[data-input-field='voice']").value = "上传配音音频";
+  const uploadVoice = $("[data-voice-upload]");
+  if (uploadVoice) uploadVoice.addEventListener("click", ()=>{
+    const engineField = $("[data-input-field='voice_engine']");
+    const voiceField = $("[data-input-field='voice']");
+    if (engineField) engineField.value = "upload";
+    if (voiceField) voiceField.value = "上传配音音频";
     changed();
-    $("[data-when='voice-upload']").scrollIntoView({behavior:"smooth", block:"center"});
-    $("#voice-file").focus({preventScroll:true});
+    $("[data-when='voice-upload']")?.scrollIntoView({behavior:"smooth", block:"center"});
+    $("#voice-file")?.focus({preventScroll:true});
   });
-  $("[data-voice-script]").addEventListener("click", ()=>{
+  const voiceScript = $("[data-voice-script]");
+  if (voiceScript) voiceScript.addEventListener("click", ()=>{
     const snapshot = collectVoiceSnapshot();
     const text = snapshot.shots.map((shot,i)=>`镜头 ${i+1} / ${shot.id}\n${shot.narration}`).join("\n\n");
     const url = URL.createObjectURL(new Blob([text], {type:"text/plain;charset=utf-8"}));

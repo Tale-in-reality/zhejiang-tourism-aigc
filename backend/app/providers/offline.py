@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from .llm import LLMProvider, LLMResult
+from .llm import LLMProvider, LLMResult, plan_narration_budget
 from ..services import knowledge as kb
 
 
@@ -102,6 +102,198 @@ CITY_KNOWLEDGE: dict[str, dict[str, Any]] = {
 class OfflineLLMProvider(LLMProvider):
     name = "offline-zhejiang-editor"
     model = "zhejiang-editor-v1"
+
+    # —— 候选池（offline：从知识库 imagery 生成 10 个确定性候选）——
+    def candidates(self, context: dict[str, Any]) -> LLMResult:
+        from ..services import shot_candidates as service
+
+        city = kb.normalize_city(str(context.get("city") or ""))
+        knowledge = CITY_KNOWLEDGE.get(city, {
+            "landmark": city, "culture": "当地文化", "fact": f"走近{city}的山水与人文",
+            "aliases": [], "color": "#2d6c63", "accent": "#d6ad60",
+        })
+        landmark = str(context.get("landmark") or knowledge["landmark"])
+        entities = kb.topic_entities(city, landmark, str(context.get("theme") or ""),
+                                     str(context.get("culture") or ""),
+                                     str(context.get("festival") or "")) or []
+        pool: list[tuple[str, list[str]]] = []
+        for entity in entities[:6]:
+            imagery = [str(item) for item in (entity.get("imagery") or []) if str(item).strip()]
+            if imagery:
+                pool.append((str(entity.get("name") or landmark), imagery))
+        if not pool:
+            pool = [(landmark, [f"{landmark}的山水轮廓", f"{landmark}的石材肌理", f"{landmark}的晨光投影"])]
+        times = ["清晨", "正午", "黄昏", "夜"]
+        sizes = ["远景", "全景", "中景", "近景", "特写"]
+        target = service.target_shot_count(
+            int(context.get("duration") or 30), int(context.get("shot_count") or 0)
+        )
+        total, role_counts = service.candidate_plan(target)
+        roles = []
+        for role in ("opening", "subject", "detail", "person", "closing"):
+            roles.extend([role] * int(role_counts.get(role, 0)))
+        candidates = []
+        for index, role in enumerate(roles, start=1):
+            name, imagery = pool[(index - 1) % len(pool)]
+            time_value = times[(index - 1) % len(times)]
+            size_value = sizes[(index - 1) % len(sizes)]
+            place = f"{city}{name}" if city and city not in name else name
+            candidates.append(
+                {
+                    "id": f"c{index}",
+                    "role": role,
+                    "title": f"{name}·{size_value}{index}",
+                    "hook": f"{time_value}的{name}，{imagery[0]}",
+                    "imagery": imagery[:3],
+                    "place": place,
+                    "time_of_day": time_value,
+                    "shot_size": size_value,
+                    "motion": "环境细节缓慢变化",
+                    "why": f"以{size_value}呈现{name}，建立{city}的辨识度",
+                    "duration_hint": 5,
+                }
+            )
+        return LLMResult(
+            data={
+                "arc": {
+                    "opening": f"抵达{city}，建立空间与时间",
+                    "development": f"深入{landmark}的细节与人文",
+                    "climax": f"{landmark}最具辨识度的一刻",
+                    "closing": "留白收束",
+                },
+                "candidates": candidates,
+            },
+            provider=self.name,
+            model=self.model,
+            fallback_used=True,
+            event={
+                "type": "shot_candidates",
+                "provider": self.name,
+                "model": self.model,
+                "count": len(candidates),
+                "target_shots": target,
+                "rewrite_attempts": 0,
+                "prompt_version": "candidates-offline-v1",
+            },
+        )
+
+    # —— 逐镜详述（offline：把候选字段补齐成可过校验门的规格）——
+    def detail(self, context: dict[str, Any]) -> dict[str, Any]:
+        selected = list(context.get("selected") or [])
+        per_shot_seconds = [float(value) for value in (context.get("per_shot_seconds") or [])]
+        task_input = dict(context.get("task_input") or {})
+        duration = int(task_input.get("duration", 30))
+        budget = plan_narration_budget(duration, len(selected))
+        per_chars = int(budget["per_shot_chars"])
+        shots = []
+        for index, (row, seconds) in enumerate(zip(selected, per_shot_seconds), start=1):
+            place = str(row.get("place") or task_input.get("landmark") or task_input.get("city") or "")
+            time_value = str(row.get("time_of_day") or "清晨")
+            if time_value not in ("清晨", "正午", "黄昏", "夜"):
+                time_value = "清晨"
+            light = {
+                "清晨": ("右上方", "低角度散射光", "低"),
+                "正午": ("正上方", "顶光硬光", "高"),
+                "黄昏": ("左后方", "暖色侧光", "中"),
+                "夜": ("侧前方", "低照度暖光点", "高"),
+            }[time_value]
+            size_value = str(row.get("shot_size") or "中景")
+            if size_value not in ("远景", "全景", "中景", "近景", "特写"):
+                size_value = "中景"
+            anchors = [str(item) for item in (row.get("imagery") or []) if str(item)]
+            first = anchors[0] if anchors else "石材肌理"
+            last = anchors[-1] if anchors else "水痕"
+            detail_extra = f"{first}与{last}的细节层次"
+            must_include = (anchors + [detail_extra])[:5]
+            anchor_text = "、".join(anchors[:3]) if anchors else first
+            body = (
+                f"{place}的{row.get('title') or '主景'}，{anchor_text}清楚可见；"
+                f"{time_value}{light[1]}，光线从{light[0]}来，明暗过渡平缓；"
+                f"{size_value}平视，主体位于画面中部偏下，前景留出环境，上方留白给字幕；"
+                "冷灰色调，青灰与雾白为主，暗部保留细节；"
+                f"{row.get('motion') or '环境细节缓慢流动'}，水面与石面的反光轻轻晃动，雾气缓慢流动。"
+            )
+            # offline 旁白：从锚点与地点拼句并补到字数预算（模板腔，仅用于离线跑通）
+            base = f"{place}，{first}在{time_value}里显出层次。"
+            filler = f"{last}停在画面里，脚步放慢，看得更清。"
+            narration = (base + filler)[:per_chars]
+            while len(narration) < max(9, per_chars - 6):
+                narration += "再看一眼。"
+            narration = narration[:per_chars]
+            shots.append(
+                {
+                    "candidate_id": row.get("candidate_id") or row.get("id"),
+                    "duration_sec": round(seconds, 2),
+                    "subject": {
+                        "name": str(row.get("title") or place),
+                        "material": "青灰石材与水汽",
+                        "details": [first, last],
+                        "scale": size_value,
+                    },
+                    "environment": {
+                        "place": place,
+                        "season": "春",
+                        "weather": "薄雾" if time_value == "清晨" else "晴",
+                        "time": time_value,
+                    },
+                    "lighting": {"direction": light[0], "quality": light[1], "contrast": light[2]},
+                    "composition": {
+                        "shot_size": size_value,
+                        "angle": "平视",
+                        "framing": "主体居中，前景留出环境",
+                        "negative_space": "上方留白给字幕",
+                    },
+                    "palette": {"temperature": "冷", "dominant": ["青灰", "雾白"]},
+                    "motion": {"in_frame": [row.get("motion") or "环境细节缓慢变化"], "camera": "静止"},
+                    "must_include": must_include,
+                    "must_avoid": ["文字", "现代广告牌"],
+                    "continuity": {
+                        "same_subject": True,
+                        "same_palette": True,
+                        "relation_to_prev": "延续上一镜的色调，视角略作变化" if index > 1 else "",
+                    },
+                    "visual_prompt": body,
+                    "narration": narration,
+                    "subtitle": narration,
+                }
+            )
+        from ..services import shot_detail as detail_service
+
+        normalized = detail_service.normalize_detail(
+            {"shots": shots}, selected=selected, per_shot_seconds=per_shot_seconds
+        )
+        gate = detail_service.validate_detail(
+            normalized,
+            selected=selected,
+            theme=str(task_input.get("theme") or ""),
+            city=str(task_input.get("city") or ""),
+            narration_budget=budget,
+            composed=detail_service.build_composed_prompts(
+                normalized, dict(context.get("style_ctx") or {})
+            ),
+        )
+        return {
+            "title": f"{task_input.get('city') or ''}{task_input.get('theme') or ''}".strip() or "候选成片",
+            "summary": f"{task_input.get('theme') or '主题'}：按所选镜头顺序成片。",
+            "cta": "来走走看看。",
+            "shots": normalized,
+            "gate": {
+                "ok": gate.ok,
+                "problems": gate.problems,
+                "composed_lengths": gate.composed_lengths,
+                "rewrite_attempts": 0,
+            },
+            "event": {
+                "type": "shot_detail",
+                "provider": self.name,
+                "model": self.model,
+                "shot_count": len(normalized),
+                "gate_ok": gate.ok,
+                "problem_count": len(gate.problems),
+                "rewrite_attempts": 0,
+                "prompt_version": "detail-offline-v1",
+            },
+        }
 
     def generate(self, prompt: str, context: dict[str, Any]) -> LLMResult:
         city = kb.normalize_city(context["city"])

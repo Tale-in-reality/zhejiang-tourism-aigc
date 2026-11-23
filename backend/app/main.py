@@ -275,7 +275,7 @@ class AppHandler(BaseHTTPRequestHandler):
             if path == "/lake-hero.webp":
                 self._serve_file(FRONTEND_ROOT / "lake-hero.webp", "image/webp")
                 return
-            if path in {"/app.js", "/voice-studio.js", "/styles.css"}:
+            if path in {"/app.js", "/voice-studio.js", "/wizard.js", "/styles.css"}:
                 self._serve_file(
                     FRONTEND_ROOT / path.lstrip("/"),
                     mimetypes.guess_type(path)[0] or "text/plain",
@@ -344,10 +344,23 @@ class AppHandler(BaseHTTPRequestHandler):
                 self._local_speech()
                 return
             if path == "/api/previews":
-                task = orchestrator.create_preview(
-                    TaskInput.from_dict(self._read_json())
-                )
+                body = self._read_json()
+                task_input = TaskInput.from_dict(body)
+                # creation_mode=explore：先生成 10 个候选方向（10 选 4），
+                # 不直接出分镜；direct 保持原有"一次出脚本"的流程。
+                if str(body.get("creation_mode") or "direct").lower() == "explore":
+                    task = orchestrator.create_candidates(task_input)
+                else:
+                    task = orchestrator.create_preview(task_input)
                 self._json(200, task.to_dict())
+                return
+            if path.startswith("/api/tasks/") and path.endswith("/selection"):
+                task_id = path.split("/")[3]
+                self._json(200, orchestrator.select_candidates(task_id, self._read_json()))
+                return
+            if path.startswith("/api/tasks/") and path.endswith("/detail"):
+                task_id = path.split("/")[3]
+                self._json(200, orchestrator.generate_detail(task_id))
                 return
             if path.startswith("/api/tasks/") and path.endswith(("/voice-plan", "/voice-preview")):
                 task_id = path.split("/")[3]
@@ -454,6 +467,10 @@ class AppHandler(BaseHTTPRequestHandler):
             if path.startswith("/api/library/assets/") and path.count("/") == 4:
                 asset_id = path.split("/")[4]
                 self._json(200, storage.update_library_asset(asset_id, self._read_json()))
+                return
+            if path.startswith("/api/tasks/") and path.endswith("/selection"):
+                task_id = path.split("/")[3]
+                self._json(200, orchestrator.select_candidates(task_id, self._read_json()))
                 return
             if path.startswith("/api/tasks/") and path.count("/") == 3:
                 task_id = path.split("/")[3]

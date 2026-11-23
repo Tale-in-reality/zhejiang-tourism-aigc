@@ -4,6 +4,10 @@ const state = {
   projects: [], trashedProjects: [], projectRequest: 0,
   activeTask: null,
   libraryAssets: [], publicationLibraryAssets: [], libraryRequest: 0, musicLibrary: null,
+  candidateSelection: null,
+  pendingScroll: null,
+  wizardTaskId: null,
+  wizardStep: null,
 };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -145,6 +149,29 @@ function formData() {
   return data;
 }
 
+// —— 阶段切换自动定位 ——
+// 用户点「生成」后，新内容在页面下方，不滚动就等于"点了没反应"。
+// 下次 renderTask 完成时按 pendingScroll 定位并短暂高亮目标区块。
+const SCROLL_TARGETS = {
+  candidates: ".candidate-block",
+  draft: ".draft-editor",
+  detailGate: ".detail-gate",
+  video: ".result-video",
+  task: "#task-panel",
+};
+function requestScroll(target) { state.pendingScroll = target || null; }
+function applyPendingScroll() {
+  const target = state.pendingScroll;
+  state.pendingScroll = null;
+  const selector = SCROLL_TARGETS[target];
+  if (!selector) return;
+  const element = $(selector);
+  if (!element) return;
+  element.scrollIntoView({ behavior: "smooth", block: "start" });
+  element.classList.add("flash-focus");
+  window.setTimeout(() => element.classList.remove("flash-focus"), 1400);
+}
+
 function stageMarkup(task) {
   const pipeline = state.systemConfig?.pipeline || [
     { name: "scripting", label: "脚本" }, { name: "storyboard", label: "分镜" },
@@ -235,12 +262,41 @@ function syncAttachPanels() {
   if (note) note.textContent = describeSource(draftFieldValue("asset_source"));
 }
 
+const ASSET_KEY_HINTS = {
+  "ai-image": "IMAGE_API_KEY / IMAGE_BASE_URL / IMAGE_MODEL",
+  "ai-video": "VIDEO_API_KEY / VIDEO_BASE_URL / VIDEO_MODEL（图生视频还要 IMAGE_* 出首帧）",
+  "ai-t2v": "VIDEO_API_KEY / VIDEO_BASE_URL / VIDEO_MODEL",
+  "ai": "VIDEO_API_KEY / IMAGE_API_KEY",
+  "cloud": "VIDEO_API_KEY / IMAGE_API_KEY",
+  "cloud-i2v": "VIDEO_API_KEY / IMAGE_API_KEY",
+  "cloud-t2i": "IMAGE_API_KEY",
+  "cloud-t2v": "VIDEO_API_KEY",
+  stock: "PEXELS_API_KEY 或 PIXABAY_API_KEY",
+  pexels: "PEXELS_API_KEY",
+  pixabay: "PIXABAY_API_KEY",
+};
+
+function updateAssetSourceHint() {
+  const select = $('#create-form [name="asset_source"]');
+  const hint = $("#asset-source-hint");
+  if (!select || !hint) return;
+  const providers = state.systemConfig?.providers?.asset || [];
+  const entry = providers.find((item) => item.name === select.value || (ASSET_ALIASES[select.value] && item.name === ASSET_ALIASES[select.value]));
+  if (!entry || entry.available) { hint.textContent = ""; return; }
+  const keys = ASSET_KEY_HINTS[select.value] || ASSET_KEY_HINTS[entry.name] || "对应的 API KEY";
+  hint.textContent = `该来源未配置：需要 ${keys}。到「系统与配置 → API 和 KEY 管理」填写后即可用。`;
+}
+
 async function loadSystemConfig() {
   state.systemConfig = await api("/api/config");
   const selected = state.systemConfig.selected || {};
   $("#metric-provider").textContent = selected.llm || "未配置";
   const assetSelect = $('#create-form [name="asset_source"]');
-  if (assetSelect) assetSelect.innerHTML = assetProviderOptions(assetSelect.value || "configured");
+  if (assetSelect) {
+    assetSelect.innerHTML = assetProviderOptions(assetSelect.value || "configured");
+    updateAssetSourceHint();
+    assetSelect.addEventListener("change", updateAssetSourceHint);
+  }
   const pipeline = $("#system-pipeline");
   if (pipeline) pipeline.innerHTML = state.systemConfig.pipeline.map((item) => `<div><b>${String(item.order).padStart(2, "0")}</b><span>${escapeHtml(item.label)}</span><small>${escapeHtml(item.name)}</small></div>`).join("");
   const grid = $("#provider-registry");
@@ -486,54 +542,6 @@ function musicAttachPanel(task) {
 
 // 审核面板按"你要决定什么"分三段，附加上传紧跟它所属的那段，而不是垫在整块分镜
 // 编辑器之后。素材来源是决定后面出现什么的关键选择，单独提到第一段的最前面。
-function reviewSettingsMarkup(task) {
-  const input = task.input;
-  const draft = (key) => `class="draft-input" data-input-field="${key}"`;
-  return `<div class="review-settings">
-    <section class="review-block">
-      <div class="review-block-head"><span class="section-index">01 / 画面</span><h5>镜头画面从哪来</h5></div>
-      <label class="source-picker">素材来源<select ${draft("asset_source")}${visibleAssetSource(input.asset_source) !== input.asset_source ? ` data-saved-source="${escapeHtml(input.asset_source)}"` : ""}>${assetProviderOptions(input.asset_source)}</select></label>
-      <label class="source-picker">使用模式<select ${draft("visual_usage")}><option value="preview" ${input.visual_usage === "preview" ? "selected" : ""}>技术预览（允许待审素材）</option><option value="publication" ${input.visual_usage === "publication" ? "selected" : ""}>正式发布（仅审核通过）</option></select></label>
-      <p class="section-note" id="source-note">${escapeHtml(describeSource(input.asset_source))}</p>
-      ${assetAttachPanel(task)}
-      <div class="review-settings-grid">
-        <label>输出规格<select ${draft("output_resolution")}>${["720x1280", "1080x1920", "1920x1080", "1080x1080"].map((value) => `<option value="${value}" ${input.output_resolution === value ? "selected" : ""}>${value}</option>`).join("")}</select></label>
-        <label>帧率<select ${draft("fps")}>${[24, 25, 30, 60].map((value) => `<option value="${value}" ${Number(input.fps) === value ? "selected" : ""}>${value} fps</option>`).join("")}</select></label>
-        <label class="toggle-label">烧录字幕<input ${draft("include_subtitles")} type="checkbox" ${input.include_subtitles ? "checked" : ""} /><span class="toggle"></span></label>
-        <label class="toggle-label">AIGC 标识<input ${draft("include_ai_label")} type="checkbox" ${input.include_ai_label ? "checked" : ""} /><span class="toggle"></span></label>
-      </div>
-    </section>
-
-    <section class="review-block">
-      <div class="review-block-head"><span class="section-index">02 / 声音</span><h5>念什么，配什么</h5></div>
-      <div class="review-settings-grid">
-        <label>配音<select ${draft("voice")}>${voiceChoiceOptions(input.voice)}</select></label>
-        <label>语速<input ${draft("voice_rate")} type="number" min="0.5" max="2" step="0.1" value="${input.voice_rate}" /></label>
-        <label>音高 (Hz)<input ${draft("voice_pitch")} type="number" min="-50" max="50" step="5" value="${input.voice_pitch ?? 0}" /></label>
-        <label>配音音量<input ${draft("voice_volume")} type="number" min="0" max="2" step="0.05" value="${input.voice_volume}" /></label>
-        <label>背景音乐<select ${draft("music_mood")}>${choiceOptions(state.catalog?.music_moods || [], input.music_mood)}</select></label>
-        <label>音乐音量<input ${draft("music_volume")} type="number" min="0" max="1" step="0.01" value="${input.music_volume}" /></label>
-        <label>旁白出现时<select ${draft("music_ducking")}>${(state.catalog?.music_ducking || ["不压低", "轻微", "标准"]).map((value) => `<option value="${escapeHtml(value)}" ${input.music_ducking === value ? "selected" : ""}>${escapeHtml(value === "不压低" ? "保持音量不变" : value + "压低")}</option>`).join("")}</select></label>
-      </div>
-      ${voiceStudioMarkup(task)}
-      ${voiceAttachPanel(task)}
-      ${musicAttachPanel(task)}
-    </section>
-
-    <section class="review-block">
-      <div class="review-block-head"><span class="section-index">03 / 创作参数</span><h5>这支片子讲什么</h5></div>
-      <div class="review-settings-grid">
-        ${[["city", "城市"], ["landmark", "核心地标"], ["theme", "主题"], ["culture", "文化线索"], ["festival", "节庆 / 活动"], ["audience", "目标受众"], ["style", "叙事风格"]].map(([key, label]) => `<label>${label}<input ${draft(key)} value="${escapeHtml(input[key])}" /></label>`).join("")}
-        <label>成片时长<select ${draft("duration")}>${[15, 30, 60].map((value) => `<option value="${value}" ${Number(input.duration) === value ? "selected" : ""}>${value} 秒</option>`).join("")}</select></label>
-        <label>镜头数量<select ${draft("shot_count")}>${[0, 4, 6, 8].map((value) => `<option value="${value}" ${Number(input.shot_count) === value ? "selected" : ""}>${value || "自动"}${value ? " 个" : ""}</option>`).join("")}</select></label>
-      </div>
-      <label>主体锁定<textarea ${draft("subject_lock")} placeholder="同一座断桥、同一件器物或同一位人物的固定外观">${escapeHtml(input.subject_lock || "")}</textarea><small class="field-note">逐镜复用主体描述；填写参考图路径时可进一步启用图像条件。</small></label>
-      <label>主体参考图路径<input ${draft("subject_reference_path")} value="${escapeHtml(input.subject_reference_path || "")}" placeholder="可选：本地图片绝对路径" /></label>
-      <label>补充要求<textarea ${draft("custom_brief")}>${escapeHtml(input.custom_brief)}</textarea></label>
-    </section>
-  </div>`;
-}
-
 function shotTagOptions(selected) {
   const tags = Object.entries(state.catalog?.shot_tags || {wide:"地点全景", detail:"建筑或器物细节", process:"工艺过程", performance:"人物或演出", ambient:"环境空镜"});
   return `<option value="">未指定</option>${tags.map(([value, label]) => `<option value="${value}" ${value === selected ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}`;
@@ -567,30 +575,6 @@ function libraryAssetOptions(shot, usage = draftFieldValue("visual_usage") || st
   const missing = bound && !options.some(asset => asset.id === bound)
     ? `<option value="${escapeHtml(bound)}" selected>已绑定素材（正在核对可用状态）</option>` : "";
   return missing + options.map(asset => `<option value="${escapeHtml(asset.id)}" ${asset.id === bound ? "selected" : ""}>${escapeHtml(asset.name)} / ${escapeHtml(libraryStatus(asset))}</option>`).join("");
-}
-
-function shotEditor(task) {
-  return (task.shots || []).map((shot) => `<article class="shot-editor">
-    <div class="shot-editor-header"><strong>镜头 ${String(shot.order).padStart(2, "0")}</strong><span>${escapeHtml(shot.id)}</span></div>
-    <label>知识实体<select data-shot-field="entity_id" data-shot-id="${escapeHtml(shot.id)}">${entityOptions(task.input.city, shot.entity_id)}</select></label>
-    <label>镜头意图<select data-shot-field="shot_tag" data-shot-id="${escapeHtml(shot.id)}">${shotTagOptions(shot.shot_tag)}</select></label>
-    <label>绑定库素材<select data-shot-field="library_asset_id" data-shot-id="${escapeHtml(shot.id)}"><option value="">自动选材</option>${libraryAssetOptions(shot)}</select></label>
-    <p class="section-note">正式发布只允许已审核、授权有效且文件指纹未变化的素材。</p>
-    <label>镜头标题<input data-shot-field="title" data-shot-id="${escapeHtml(shot.id)}" value="${escapeHtml(shot.title)}" /></label>
-    <label>连续主体组（图生视频）<input data-shot-field="subject_group" data-shot-id="${escapeHtml(shot.id)}" maxlength="80" value="${escapeHtml(shot.subject_group || "")}" placeholder="相同主体填写相同组名" /></label>
-    <label>组内参考图（每组一张）<input data-reference-file type="file" accept="image/jpeg,image/png" /></label>
-    <input type="hidden" data-shot-field="subject_reference" data-shot-id="${escapeHtml(shot.id)}" value="${escapeHtml(shot.subject_reference || "")}" />
-    <small data-ref-status>${shot.subject_reference ? "已绑定参考图" : ""}</small><button type="button" data-clear-reference>解除参考图</button>
-    <label>画面描述<textarea data-shot-field="visual_prompt" data-shot-id="${escapeHtml(shot.id)}">${escapeHtml(shot.visual_prompt)}</textarea></label>
-    <p class="section-note">旁白请在上方声音轨道的对应片段中编辑。</p>
-    <label>字幕<textarea data-shot-field="subtitle" data-shot-id="${escapeHtml(shot.id)}">${escapeHtml(shot.subtitle)}</textarea></label>
-    <label>进入本镜头的转场<select data-shot-field="transition" data-shot-id="${escapeHtml(shot.id)}">${[["fade","淡变"],["dissolve","叠化"],["smoothleft","平滑左移"],["smoothright","平滑右移"],["circleopen","圆形展开"],["wipeleft","向左划像"],["wiperight","向右划像"],["zoom","推近"],["slideleft","左移（兼容）"],["slideright","右移（兼容）"]].map(([value,label]) => `<option value="${value}" ${shot.transition === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
-    <label>静图运动<select data-shot-field="motion" data-shot-id="${escapeHtml(shot.id)}">${[["auto","自动交替"],["push","聚焦推近"],["pull","缓慢拉远"],["gentle","轻微推近"]].map(([value,label]) => `<option value="${value}" ${(shot.motion || "auto") === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
-    <p class="section-note">焦点坐标可留空自动识别；0 为左/上，1 为右/下。图像生成后也可通过镜头接口修正。</p>
-    <label>焦点 X<input type="number" min="0" max="1" step="0.01" data-shot-field="focus_x" data-shot-id="${escapeHtml(shot.id)}" value="${shot.focus_x ?? ""}" placeholder="自动" /></label>
-    <label>焦点 Y<input type="number" min="0" max="1" step="0.01" data-shot-field="focus_y" data-shot-id="${escapeHtml(shot.id)}" value="${shot.focus_y ?? ""}" placeholder="自动" /></label>
-    <label>时长（秒）<input type="number" min="1" max="20" step="0.1" data-shot-field="duration_sec" data-shot-id="${escapeHtml(shot.id)}" value="${shot.duration_sec}" /></label>
-  </article>`).join("");
 }
 
 function libraryPanelMarkup(task) {
@@ -922,6 +906,150 @@ function bindDeliveryForms(task) {
   }));
 }
 
+const ROLE_LABELS = { opening: "开场", subject: "主体", detail: "细节", person: "人物", closing: "收束" };
+const ROLE_HINTS = {
+  opening: "建立空间与时间", subject: "最具辨识度的景观", detail: "材质、工艺、局部",
+  person: "真实生活感", closing: "留白与收束",
+};
+
+function candidateSelectionState(task) {
+  // 选择状态按任务保存：切换任务不互相污染。
+  if (!state.candidateSelection || state.candidateSelection.taskId !== task.id) {
+    const saved = Array.isArray(task.selection) ? task.selection : [];
+    state.candidateSelection = { taskId: task.id, ids: saved.map(row => row.candidate_id) };
+  }
+  return state.candidateSelection;
+}
+
+function candidateSelectionMarkup(task) {
+  if (task.creation_mode !== "explore" || !Array.isArray(task.shot_candidates) || !task.shot_candidates.length) return "";
+  const selection = candidateSelectionState(task);
+  const chosen = selection.ids;
+  const arc = task.candidates_arc || {};
+  const arcText = ["opening", "development", "climax", "closing"]
+    .map(key => arc[key] ? `<span>${escapeHtml(arc[key])}</span>` : "").join("");
+  const groups = {};
+  for (const candidate of task.shot_candidates) {
+    (groups[candidate.role] ||= []).push(candidate);
+  }
+  const cards = Object.entries(groups).map(([role, items]) => `
+    <div class="candidate-group">
+      <div class="candidate-group-head"><strong>${escapeHtml(ROLE_LABELS[role] || role)}</strong><small>${escapeHtml(ROLE_HINTS[role] || "")}</small></div>
+      <div class="candidate-grid">${items.map(candidate => {
+        const orderIndex = chosen.indexOf(candidate.id);
+        const picked = orderIndex >= 0;
+        return `<article class="candidate-card ${picked ? "picked" : ""}" data-candidate-toggle="${escapeHtml(candidate.id)}" tabindex="0" role="button" aria-pressed="${picked}">
+          <div class="candidate-card-head"><strong>${escapeHtml(candidate.title || "未命名")}</strong>${picked ? `<span class="candidate-order">${orderIndex + 1}</span>` : ""}</div>
+          <p>${escapeHtml(candidate.hook || "")}</p>
+          <div class="candidate-anchors">${(candidate.imagery || []).map(a => `<em>${escapeHtml(a)}</em>`).join("")}</div>
+          <small>${escapeHtml([candidate.time_of_day, candidate.shot_size].filter(Boolean).join(" · "))}</small>
+          ${candidate.why ? `<small class="candidate-why">${escapeHtml(candidate.why)}</small>` : ""}
+        </article>`;
+      }).join("")}</div>
+    </div>`).join("");
+  const warnings = (task.trace?.events || []).filter(e => e.type === "shot_selection").pop()?.warnings || [];
+  const chosenTotal = task.shot_candidates.length;
+  const targetHint = task.candidate_target || (Number(task.input?.shot_count) || 4);
+  const canDetail = chosen.length >= 2 && chosen.length <= 12;
+  return `<section class="review-block candidate-block">
+    <div class="review-block-head"><span class="section-index">01 / CANDIDATES</span><h5>选镜头：${chosenTotal} 选 ${targetHint}，顺序即成片顺序</h5></div>
+    ${arcText ? `<div class="candidate-arc">${arcText}</div>` : ""}
+    <p class="section-note">点卡片选择/取消；已选卡片右上角数字是它在成片里的顺序。候选数是按你填的镜头数 ×2.5 生成的（计划 ${targetHint} 镜，共 ${chosenTotal} 个方向）；方向互斥由生成端保证，选定后锚点会强制继承到详细 prompt。</p>
+    ${cards}
+    <div class="candidate-footer">
+      <span><strong>${chosen.length}</strong> 个已选${chosen.length ? `：${chosen.map((id, i) => `${i + 1}.${escapeHtml((task.shot_candidates.find(c => c.id === id) || {}).title || id)}`).join("　")}` : ""}</span>
+      <div class="candidate-actions">
+        <button type="button" class="text-button" data-candidate-clear="${escapeHtml(task.id)}" ${chosen.length ? "" : "disabled"}>清空</button>
+        <button type="button" class="text-button" data-candidate-up="${escapeHtml(task.id)}" ${chosen.length > 1 ? "" : "disabled"}>上移末位</button>
+        <button type="button" class="primary-button candidate-confirm" data-candidate-detail="${escapeHtml(task.id)}" aria-label="确认选择并生成详述" ${canDetail ? "" : "disabled"}>确认选择并生成详述<b>→</b></button>
+      </div>
+    </div>
+    ${warnings.length ? `<ul class="candidate-warnings">${warnings.map(w => `<li>${escapeHtml(w)}</li>`).join("")}</ul>` : ""}
+  </section>`;
+}
+
+function toggleCandidate(task, candidateId) {
+  const selection = candidateSelectionState(task);
+  const index = selection.ids.indexOf(candidateId);
+  if (index >= 0) selection.ids.splice(index, 1);
+  else if (selection.ids.length < 12) selection.ids.push(candidateId);
+  renderTask(task);
+}
+
+async function submitCandidateSelection(task) {
+  const selection = candidateSelectionState(task);
+  if (selection.ids.length < 2) { showToast("至少选择 2 个镜头"); return; }
+  try {
+    const payload = { selection: selection.ids.map((id, index) => ({ candidate_id: id, order: index + 1 })) };
+    await api(`/api/tasks/${encodeURIComponent(task.id)}/selection`, { method: "PATCH", body: JSON.stringify(payload) });
+    showToast("选择已保存，正在生成详细 prompt…");
+    const result = await api(`/api/tasks/${encodeURIComponent(task.id)}/detail`, { method: "POST", body: "{}" });
+    const refreshed = await api(`/api/tasks/${encodeURIComponent(task.id)}`);
+    state.wizardStep = 3;
+    requestScroll("draft");
+    renderTask(refreshed);
+    const problems = result?.gate?.problems || [];
+    showToast(problems.length ? `已生成详细 prompt，但校验有 ${problems.length} 项提示` : "详细 prompt 已生成，请审核后生成视频");
+  } catch (error) { showToast(error.message); }
+}
+
+function composedPromptMarkup(shot) {
+  if (!shot.composed_prompt) return "";
+  return `<details class="shot-composed"><summary>完整生成 prompt（${shot.composed_prompt.length} 字）</summary><pre>${escapeHtml(shot.composed_prompt)}</pre></details>`;
+}
+
+function detailGateMarkup(task) {
+  const events = (task.trace?.events || []).filter(e => e.type === "shot_detail");
+  const last = events[events.length - 1];
+  if (!last) return "";
+  if (last.gate_ok) {
+    return `<p class="detail-gate ok">详细 prompt 校验通过：字段齐全、锚点已继承、长度在预算内。</p>`;
+  }
+  const problems = last.gate_problems || [];
+  if (!problems.length) return "";
+  return `<div class="detail-gate warn"><strong>详细 prompt 校验提示（${problems.length} 项，可手动修正）</strong><ul>${problems.map(p => `<li>${escapeHtml(p)}</li>`).join("")}</ul></div>`;
+}
+
+function semanticQaMarkup(task) {
+  // 语义验收（VLM）：与像素验收分开呈现。未配置视觉模型时明确写"未检查"，
+  // 不能让"没检查"看起来像"通过"。
+  const semantic = task.visual_qa?.semantic;
+  if (!semantic || !semantic.version) return "";
+  const statusLabel = {
+    checked: semantic.passed ? "通过" : "有阻断",
+    unconfigured: "未配置视觉模型",
+    skipped: "已跳过",
+    failed: "判定失败",
+  }[semantic.status] || semantic.status;
+  const shots = Array.isArray(semantic.shots) ? semantic.shots : [];
+  const rows = shots.map((item) => {
+    const verdict = item.verdict;
+    if (!verdict) {
+      return `<div class="semantic-row"><strong>${escapeHtml(item.shot_id)}</strong><span class="semantic-flag warn">判定失败</span><small>${escapeHtml(item.error || "")}</small></div>`;
+    }
+    const flag = verdict.passed
+      ? '<span class="semantic-flag ok">通过</span>'
+      : '<span class="semantic-flag bad">不通过</span>';
+    const reasons = (verdict.reasons || []).map((reason) => escapeHtml(reason)).join("；");
+    const warnings = (verdict.warnings || []).map((item2) => escapeHtml(item2)).join("、");
+    const retried = item.regenerated_attempts ? ` · 已重生成 ${item.regenerated_attempts} 次` : "";
+    return `<div class="semantic-row"><strong>${escapeHtml(item.shot_id)}</strong>${flag}
+      <small>主体一致性 ${escapeHtml(String(verdict.subject_consistent ?? "?"))}/5 · 图文匹配 ${verdict.matches_shot ? "是" : "否"} · 地点可信 ${verdict.location_plausible ? "是" : "否"}${verdict.intent_coverage != null ? ` · 意图覆盖 ${Math.round(Number(verdict.intent_coverage) * 100)}%` : ""}${escapeHtml(retried)}</small>
+      ${(verdict.missing_anchors || []).length ? `<small class="semantic-reasons">缺锚点：${verdict.missing_anchors.map(a => escapeHtml(a)).join("、")}</small>` : ""}
+      ${reasons ? `<small class="semantic-reasons">${reasons}</small>` : ""}
+      ${warnings ? `<small class="semantic-warnings">提醒：${warnings}</small>` : ""}
+      ${verdict.note ? `<small>审片意见：${escapeHtml(verdict.note)}</small>` : ""}</div>`;
+  }).join("");
+  const note = semantic.status === "unconfigured"
+    ? `<p class="section-note">语义验收未启用：设置 <code>VISION_MODEL</code>（可选 <code>VISION_BASE_URL</code>/<code>VISION_API_KEY</code>，缺省回落 <code>LLM_*</code>）后生效。当前画面内容未经模型检查。</p>`
+    : semantic.status === "skipped"
+      ? `<p class="section-note">${escapeHtml(semantic.reason || "本次没有需要语义判定的 AI 镜头。")}</p>`
+      : `<p class="section-note">模型 ${escapeHtml(semantic.model || "")} 逐镜判定：图文匹配、主体一致性、违规元素与地点特征。不通过的镜头已按上限自动重生成，仍未通过则需人工复核。</p>`;
+  return `<section class="review-block"><div class="review-block-head"><span class="section-index">QA / SEMANTIC</span><h5>语义验收（VLM）</h5></div>
+    <div class="mini-metrics"><div><strong>${escapeHtml(statusLabel)}</strong><span>总结果</span></div><div><strong>${shots.length}</strong><span>判定镜头</span></div><div><strong>${(semantic.blocking_shots || []).length}</strong><span>待人工复核</span></div></div>
+    ${note}${rows}</section>`;
+}
+
 function visualQaMarkup(task) {
   const qa = task.visual_qa;
   if (!qa || !qa.version) return "";
@@ -932,36 +1060,54 @@ function visualQaMarkup(task) {
     : "<p>未发现阻断项。</p>";
   return `<section class="review-block"><div class="review-block-head"><span class="section-index">QA / VISUAL</span><h5>画面与主体一致性验收</h5></div>
     <div class="mini-metrics"><div><strong>${qa.passed ? "通过" : "未通过"}</strong><span>总结果</span></div><div><strong>${Number(requirements.video_shot_count || 0)} / ${Number(requirements.min_video_shots || 0)}</strong><span>视频镜头</span></div><div><strong>${qa.generation_contract?.passed ? "一致" : "不一致"}</strong><span>主体契约</span></div></div>
-    <p class="section-note">亮度波动 ${escapeHtml(cross.brightness_cv ?? "未测")} / 色彩相似度 ${escapeHtml(cross.min_color_hist_similarity ?? "未测")}。验收读取实际像素；语义级身份核验仍需接入视觉嵌入或主体识别模型。</p>
+    <p class="section-note">亮度波动 ${escapeHtml(cross.brightness_cv ?? "未测")} / 色彩相似度 ${escapeHtml(cross.min_color_hist_similarity ?? "未测")}。本段只验像素层（清晰度、对比度、熵、跨镜漂移）；“画面是否贴题、主体是否跑偏”由上方语义验收判定，未配置视觉模型时那一层会明确标注未检查。</p>
     ${failures}<p><a href="/media/${encodeURIComponent(task.id)}/visual_qa.json" target="_blank">打开完整视觉验收 JSON</a></p>
   </section>`;
 }
 
+function syncTaskHash(taskId, step) {
+  const target = `#task=${encodeURIComponent(taskId)}&step=${step}`;
+  if (window.location.hash !== target) history.replaceState(null, "", target);
+}
+
 function renderTask(task) {
-  const record = taskRecordMarkup(task.input || {}, task.initial_input);
   // Old drafts retain their uploaded audio when the retired source is opened.
   if (task.input?.voice_engine === "xstudio") task = {...task, input:{...task.input, voice_engine:"upload", voice:"上传配音音频"}};
   if (task.input?.voice_engine === "tianyi") task = {...task, input:{...task.input, voice_engine:"reselect", voice:"请选择新音色"}};
   state.latestTaskId = task.id;
   state.activeTask = task;
-  const error = task.error ? `<div class="error-box"><strong>任务失败</strong><p>${escapeHtml(task.error)}</p><button class="text-button" data-retry="${escapeHtml(task.id)}">从脚本阶段重试</button></div>` : "";
-  const render = task.render || {};
-  const mediaLinks = render.video_url ? `<a href="${render.video_url}" target="_blank">打开 MP4</a><a href="${render.video_url}" download>下载 MP4</a><a href="${render.subtitle_url}" target="_blank">下载 SRT</a>${task.audio?.voice_url ? `<a href="${task.audio.voice_url}" target="_blank">试听配音</a>` : ""}${task.audio?.music_url ? `<a href="${task.audio.music_url}" target="_blank">试听音乐</a>` : ""}` : "";
-  const links = `<div class="task-links"><a href="/api/tasks/${encodeURIComponent(task.id)}/export?format=md" download title="导出已保存版本；未保存的修改请先保存">导出文案</a>${mediaLinks}</div>${render.video_url ? `<video class="result-video" controls playsinline src="${render.video_url}"></video>` : ""}`;
-  const draft = task.shots?.length && ["draft", "edited", "failed"].includes(task.status) ? `<div class="draft-editor">
-    <div class="draft-editor-header"><div><span class="section-index">SCRIPT REVIEW</span><h4>审核并修改后再生成</h4></div><button class="primary-button" data-generate-task="${escapeHtml(task.id)}"><span>确认并生成实际视频</span><b>→</b></button></div>
-    <label>标题<input class="draft-title" value="${escapeHtml(task.title)}" /></label><label>摘要<textarea class="draft-summary">${escapeHtml(task.summary)}</textarea></label><label>CTA<textarea class="draft-cta">${escapeHtml(task.cta)}</textarea></label><label>完整旁白<textarea class="draft-narration">${escapeHtml(task.narration)}</textarea></label>
-    ${reviewSettingsMarkup(task)}
-    <section class="review-block">
-      <div class="review-block-head"><span class="section-index">04 / 分镜脚本</span><h5>逐镜要念的、要拍的</h5></div>
-      <div class="shot-editor-grid">${shotEditor(task)}</div>
-    </section>
-    ${libraryPanelMarkup(task)}
-    <button class="text-button" data-save-draft="${escapeHtml(task.id)}">保存脚本、分镜和参数修改</button>
-  </div>` : "";
-  $("#active-task").innerHTML = `<div class="task-progress"><div class="task-meta"><div><h4>${escapeHtml(task.title || "脚本预览")}</h4><p>${escapeHtml(task.summary || "请审核脚本和分镜后生成。")} / ${escapeHtml(task.status)} / ${escapeHtml(task.id)}</p></div><strong>${task.progress}%</strong></div><div class="progress-bar"><span style="width:${task.progress}%"></span></div><div class="pipeline">${stageMarkup(task)}</div>${record}${error}${draft}${links}<div class="task-links"><a href="/api/tasks/${encodeURIComponent(task.id)}/ledger" download>下载任务底账</a></div>${visualReviewMarkup(task)}${billingMarkup(task)}${(task.audio?.subject_reviews || []).map(s => s.url ? `<a href="${escapeHtml(s.url)}" target="_blank">复核 ${escapeHtml(s.group)} · 首中尾帧</a>` : escapeHtml(s.error)).join(" ")}${task.audio?.subtitle_alignment ? '<p>字幕对齐 · ' + task.audio.subtitle_alignment.segments.map(s=>escapeHtml(s.shot_id + " " + (s.source === "sentence" ? "句级（"+s.reason+"）" : s.source))).join(" / ") + '</p>' : ""}<p>${escapeHtml(task.audio?.music_notice || (task.audio?.music_match?.id ? (task.audio.music_match.title || task.audio.music_match.id) + " · " + task.audio.music_match.license : ""))}</p><div class="asset-summary"><strong>素材记录</strong>${assetList(task)}</div>${visualQaMarkup(task)}<div class="trace-line">文本 provider: ${escapeHtml(task.trace?.provider || "pending")} / 模型: ${escapeHtml(task.trace?.model || "pending")} / fallback: ${String(Boolean(task.trace?.fallback_used))}<br />配音: ${escapeHtml(task.audio?.voice_provider || "pending")} / 音乐: ${escapeHtml(task.audio?.music_provider || "pending")} / 音频: ${render.has_audio ? "有" : "无"} / 烧录字幕: ${render.has_burned_subtitles ? "有" : "无"}<br />Provider 报告成本: ${Number(task.cost?.total || 0).toFixed(4)}（${escapeHtml(task.cost?.unit || "等待统计")}）</div></div>`;
+  if (state.wizardTaskId !== task.id) {
+    state.wizardTaskId = task.id;
+    state.wizardStep = null;
+  }
+  const step = wizardStepFor(task);
+  syncTaskHash(task.id, step);
+  setCreateFormVisible(false);
+  $("#active-task").innerHTML = `<div class="task-progress">
+      <div class="task-meta"><div><h4>${escapeHtml(task.title || "脚本预览")}</h4><p>${escapeHtml(task.summary || "按步骤完成创作。")} / ${escapeHtml(task.status)} / ${escapeHtml(task.id)}</p></div><div class="task-meta-actions"><strong>${task.progress}%</strong><button type="button" class="text-button" data-brief-restart>新建任务</button></div></div>
+      <div class="progress-bar"><span style="width:${task.progress}%"></span></div>
+      ${wizardStepperMarkup(task, step)}
+    </div>
+    <div class="wizard-body">${stepBodyMarkup(task, step)}</div>
+    ${wizardNavMarkup(task, step)}`;
+  bindWizard(task);
   $$("[data-retry]").forEach((button) => button.addEventListener("click", () => retryTask(button.dataset.retry)));
   $$("[data-generate-task]").forEach((button) => button.addEventListener("click", () => generateTask(button.dataset.generateTask)));
+  $$("[data-candidate-toggle]").forEach((card) => {
+    const handler = () => toggleCandidate(task, card.dataset.candidateToggle);
+    card.addEventListener("click", handler);
+    card.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handler(); } });
+  });
+  $$("[data-candidate-detail]").forEach((button) => button.addEventListener("click", () => submitCandidateSelection(task)));
+  $$("[data-candidate-clear]").forEach((button) => button.addEventListener("click", () => {
+    candidateSelectionState(task).ids = []; renderTask(task);
+  }));
+  $$("[data-candidate-up]").forEach((button) => button.addEventListener("click", () => {
+    const selection = candidateSelectionState(task);
+    const last = selection.ids.pop();
+    if (last) selection.ids.unshift(last);
+    renderTask(task);
+  }));
   $$("[data-save-draft]").forEach((button) => button.addEventListener("click", () => saveDraft(button.dataset.saveDraft)));
   $$("[data-reference-file]").forEach(field => field.addEventListener("change", async () => {
     const row = field.closest(".shot-editor");
@@ -989,10 +1135,11 @@ function renderTask(task) {
     if (field) field.addEventListener("change", () => renderLibraryItems(task));
   });
   loadTaskLibrary(task);
+  applyPendingScroll();
   $$("[data-upload-audio]").forEach((button) => button.addEventListener("click", () => uploadAudio(button.dataset.uploadTask, button.dataset.uploadAudio)));
   // 改素材来源/配音/音乐要立刻反映到上传面板上：选 AI 生成就不该再看到上传框。
   // 只切 class 不重渲染，免得把用户还没保存的改动冲掉。
-  const editor = $(".draft-editor");
+  const editor = $(".wizard-body");
   if (editor) {
     editor.addEventListener("input", (event) => { if (event.target.dataset?.inputField) syncAttachPanels(); });
     editor.addEventListener("change", (event) => {
@@ -1018,7 +1165,12 @@ function readFileAsDataUrl(file) {
 
 async function saveDraft(taskId, {refresh = true, notify = true} = {}) {
   try {
-    const topLevel = { title: $(".draft-title").value, summary: $(".draft-summary").value, cta: $(".draft-cta").value, narration: $(".draft-narration").value };
+    // 分步工作台里不同步骤只渲染部分字段：只提交当前页面存在的，缺的字段服务端保持原值
+    const topLevel = {};
+    for (const [selector, key] of [[".draft-title", "title"], [".draft-summary", "summary"], [".draft-cta", "cta"], [".draft-narration", "narration"]]) {
+      const field = $(selector);
+      if (field) topLevel[key] = field.value;
+    }
     const input = {};
     $$("[data-input-field]").forEach((field) => {
       let value = field.type === "checkbox" ? field.checked : field.dataset.savedSource || field.value;
@@ -1048,7 +1200,7 @@ async function saveDraft(taskId, {refresh = true, notify = true} = {}) {
 async function generateTask(taskId) {
   if (!window.confirm("确认使用当前脚本、分镜、素材和音频参数生成实际视频吗？")) return;
   if (!await saveDraft(taskId)) return;
-  try { await api(`/api/tasks/${taskId}/generate`, { method: "POST", body: "{}" }); showToast("实际视频生成已开始。"); watchTask(taskId, true); } catch (error) { showToast(error.message); }
+  try { await api(`/api/tasks/${taskId}/generate`, { method: "POST", body: "{}" }); showToast("实际视频生成已开始。"); requestScroll("task"); watchTask(taskId, true); } catch (error) { showToast(error.message); }
 }
 
 async function uploadAsset(taskId) {
@@ -1122,6 +1274,8 @@ async function pollTask(taskId, request, notify) {
       state.pollTimer = window.setTimeout(() => pollTask(taskId, request, notify), 1000);
     } else if (task.status === "completed" && notify) {
       await loadProjects();
+      requestScroll("video");
+      renderTask(task);
       if (request === state.taskRequest) showToast("实际 MP4 已生成，请检查画面、音频、字幕和素材授权。");
     }
   } catch (error) {
@@ -1136,11 +1290,11 @@ async function createTask(event) {
   const button = event.target.querySelector("button[type=submit]");
   button.disabled = true;
   button.querySelector("span").textContent = "正在生成脚本...";
-  try { const task = await api("/api/previews", { method: "POST", body: JSON.stringify(formData()) }); stopTaskPolling(); state.recentTaskId = task.id; renderTask(task); showToast(task.status === "failed" ? task.error : "脚本和分镜已生成，请审核后确认。"); } catch (error) { showToast(error.message); } finally { button.disabled = false; button.querySelector("span").textContent = "生成脚本预览"; }
+  try { const task = await api("/api/previews", { method: "POST", body: JSON.stringify({ ...formData(), creation_mode: "explore" }) }); stopTaskPolling(); state.recentTaskId = task.id; requestScroll(task.status === "candidates_ready" ? "candidates" : "draft"); renderTask(task); showToast(task.status === "failed" ? task.error : (task.status === "candidates_ready" ? `已生成 ${(task.shot_candidates || []).length} 个镜头方向（计划 ${task.candidate_target || "?"} 镜），请选择并排序。` : "脚本和分镜已生成，请审核后确认。")); } catch (error) { showToast(error.message); } finally { button.disabled = false; button.querySelector("span").textContent = "生成脚本预览"; }
 }
 
 async function retryTask(taskId) {
-  try { await api(`/api/tasks/${taskId}/generate`, { method: "POST", body: "{}" }); watchTask(taskId, true); } catch (error) { showToast(error.message); }
+  try { await api(`/api/tasks/${taskId}/generate`, { method: "POST", body: "{}" }); requestScroll("task"); watchTask(taskId, true); } catch (error) { showToast(error.message); }
 }
 
 function projectCard(task, trashed = false) {
@@ -1326,7 +1480,11 @@ async function recordPublicationObservation(taskId) {
 // 都能直接回到同一条片子，而不是回到空白的创作工作台。
 function openTask(taskId, updateUrl = true) {
   if (!taskId) return;
-  const hash = `#task=${encodeURIComponent(taskId)}`;
+  // 地址栏带 step：刷新后回到同一步，而不是回到第一步
+  const stepMatch = window.location.hash.match(/[?&#]step=(\d+)/);
+  state.wizardStep = stepMatch ? Number(stepMatch[1]) : null;
+  state.wizardTaskId = taskId;
+  const hash = `#task=${encodeURIComponent(taskId)}` + (state.wizardStep ? `&step=${state.wizardStep}` : "");
   if (updateUrl && window.location.hash !== hash) history.pushState(null, "", hash);
   showView("create", true);
   $("#active-task").innerHTML = '<p class="empty-state" role="status">正在读取保存的任务参数…</p>';
@@ -1382,7 +1540,7 @@ function showView(name, taskDetail = false) {
 }
 
 function restoreLinkedTask() {
-  const task = window.location.hash.match(/^#task=([a-z0-9_%-]+)$/i);
+  const task = window.location.hash.match(/^#task=([a-z0-9_%-]+)(?:&step=\d+)?$/i);
   if (task) {
     try { openTask(decodeURIComponent(task[1]), false); }
     catch { showToast("任务链接无效。"); }
@@ -1522,26 +1680,31 @@ function syncPreviewButtons() {
   });
 }
 
-// 点「用这首」= 把该曲目的第一个情绪填进背景音乐下拉框。
-// 生成时后端按「情绪 + 叙事风格」再挑具体曲目，所以这里只能定情绪，不能锁定单曲。
+// 点「用这首」= 锁定这一首具体曲目（music_track_id），同时把情绪显示对齐。
+// 后端拿到 music_track_id 会精确使用该曲目，不再从同情绪里随机挑。
+function setPickedMusic(track) {
+  const form = $("#create-form");
+  const hidden = form?.querySelector("[name='music_track_id']");
+  const note = $("#music-track-note");
+  if (hidden) hidden.value = track?.id || "";
+  if (note) note.textContent = track ? `已选：${track.title || track.id}` : "";
+}
+
 function pickMusicTrack(trackId) {
   const library = state.musicLibrary;
   const track = (library?.tracks || []).find((t) => t.id === trackId);
   if (!track) return;
   const moods = (state.catalog?.music_moods || []).filter((m) => m !== "无音乐");
   const mood = (track.moods || []).find((m) => moods.includes(m));
-  if (!mood) {
-    showToast("这首曲子的情绪不在当前选项里，换一首试试。");
-    return;
-  }
   const select = document.querySelector("#create-form [name='music_mood']");
-  if (select) {
+  if (select && mood) {
     select.value = mood;
     select.dispatchEvent(new Event("change", { bubbles: true }));
   }
+  setPickedMusic(track);
   if (musicPreview) { musicPreview.pause(); musicPreviewId = ""; }
   $("#music-modal").hidden = true;
-  showToast(`背景音乐已设为「${mood}」，生成时会从该情绪的曲目里挑选。`);
+  showToast(`已选定曲目「${track.title || track.id}」，生成时直接使用这一首。`);
 }
 
 async function openMusicLibrary() {
@@ -1563,6 +1726,14 @@ async function openMusicLibrary() {
 }
 
 function bindMusicLibrary() {
+  // 手动改情绪或选「无音乐」时清掉具体曲目锁定：用户的显式改动优先。
+  const moodSelect = document.querySelector("#create-form [name='music_mood']");
+  if (moodSelect) {
+    moodSelect.addEventListener("change", () => {
+      const hidden = document.querySelector("#create-form [name='music_track_id']");
+      if (hidden && hidden.value) setPickedMusic(null);
+    });
+  }
   const browse = $("#browse-music");
   if (browse) browse.addEventListener("click", openMusicLibrary);
   const close = $("#music-modal-close");

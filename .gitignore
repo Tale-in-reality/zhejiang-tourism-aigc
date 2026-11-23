@@ -120,3 +120,7 @@ tools/
 
 # 任务数据库备份（含内部数据，不入公开仓库）
 runtime/db/*.bak*
+
+# 验证/评测产生的隔离数据目录（accept/eval/explore/video-test 等），不入库
+runtime-*/
+runtime-eval/

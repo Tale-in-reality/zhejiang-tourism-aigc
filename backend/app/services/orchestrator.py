@@ -12,11 +12,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..config import Settings
-from ..models import AssetRecord, Shot, Task, TaskInput, TraceRecord, now_iso, new_id
+from ..models import AssetRecord, Shot, ShotCandidate, Task, TaskInput, TraceRecord, now_iso, new_id
 from ..providers.audio_runtime import AudioRuntimeClient
 from ..providers.media_ffmpeg import validate_audio_file
 from ..providers.music import select_music
 from ..providers.registry import ProviderRegistry, build_provider_registry, invoke_create_or_find
+from ..providers.vision import build_vision_provider
 from ..storage import Storage, TaskBusyError, library_provenance
 from .subject_review import reference_path, review_group
 from .visual_review import build_review, write_json
@@ -25,6 +26,9 @@ from .subtitle_alignment import align_subtitles
 from . import consistency
 from . import knowledge as zhejiang_kb
 from . import reference_images
+from . import semantic_qa
+from . import shot_candidates as candidate_service
+from . import shot_detail as detail_service
 from . import visual_qa
 from .audio_sync import PerShotAudioBuilder
 from .library import library_asset_record
@@ -42,6 +46,9 @@ FRAME_REQUIRED_PROVIDERS = frozenset({"ai-video", "cloud-i2v", "cloud"})
 STRICT_ASSET_SOURCES = frozenset(
     {"ai", "cloud", "ai-video", "cloud-i2v", "ai-t2v", "cloud-t2v"}
 )
+# 语义验收不过时可以原地重生成的 provider（生成式三档）。图库/本地素材不在此列：
+# 它们的替换路径是换候选素材，不是改 prompt 重画。
+REGENERABLE_ASSET_PROVIDERS = frozenset({"ai-video", "ai-image", "ai-t2v"})
 
 @dataclass(frozen=True)
 class StageSpec:
@@ -53,6 +60,9 @@ class StageSpec:
 
 PIPELINE: tuple[StageSpec, ...] = (
     StageSpec("scripting", "脚本", 12, 27),
+    # 精修插在脚本与分镜之间：分镜阶段是空操作（分镜由脚本一并产出），
+    # 进度条沿用既有刻度，精修占用 28–31 的空档。
+    StageSpec("prompt_refine", "画面精修", 28, 31),
     StageSpec("storyboard", "分镜", 32, 36),
     StageSpec("audio", "配音", 48, 58),
     StageSpec("assets", "画面", 67, 76),
@@ -175,6 +185,176 @@ class Orchestrator:
             task.error = str(exc)
             self.update(task, event={"type": "error", "message": str(exc)})
         return task
+
+    # —— 候选池流程（explore 模式：10 选 4 → 逐镜详述 → 生成）——
+    def create_candidates(self, task_input: TaskInput) -> Task:
+        """生成 10 个候选方向，等用户选择。不消耗素材与渲染。"""
+        task = Task(
+            id=new_id("draft"), input=task_input, initial_input=vars(task_input).copy(),
+            status="candidates_ready", stage="candidates", progress=5,
+            creation_mode="explore",
+        )
+        task.trace = TraceRecord(
+            provider="pending", model="pending",
+            prompt_version=consistency.PROMPT_VERSION, fallback_used=False,
+        )
+        self.storage.save_task(task)
+        try:
+            result = self._call_llm_method(task, "candidates", task_input.__dict__)
+            task.candidates_arc = dict(result.data.get("arc") or {})
+            task.candidate_target = int(
+                result.data.get("target_shots")
+                or candidate_service.target_shot_count(
+                    int(task_input.duration), int(task_input.shot_count)
+                )
+            )
+            task.shot_candidates = [
+                ShotCandidate(**item) for item in result.data.get("candidates") or []
+            ]
+            event = dict(result.event or {})
+            event.update({"type": "shot_candidates", "status": "completed"})
+            self.update(
+                task,
+                status="candidates_ready",
+                stage="candidates",
+                progress=15,
+                event=event,
+            )
+        except Exception as exc:
+            task.status = "failed"
+            task.stage = "candidates"
+            task.error = f"候选池生成失败：{exc}"
+            self.update(task, event={"type": "error", "message": str(exc)})
+        return task
+
+    def select_candidates(self, task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """保存用户的选择与排序。硬错误拒绝，缺开场/收束只提醒。"""
+        task = self._load(task_id)
+        if task.creation_mode != "explore":
+            raise ValueError("该任务不是候选池模式")
+        # 允许从后续步骤回退重选：草稿/已编辑/失败态都能改选择，
+        # 改完下游详述与素材按"保留并标记过期"处理（事件里带 stale）。
+        if task.status in {"queued", "running"}:
+            raise ValueError(f"当前状态 {task.status} 不能提交选择")
+        stale = bool(task.shots)
+        selection = payload.get("selection") if isinstance(payload, dict) else None
+        ordered, warnings = candidate_service.select_candidates(
+            task.shot_candidates, selection or []
+        )
+        task.selection = ordered
+        self.update(
+            task,
+            status="selected",
+            stage="selection",
+            progress=20,
+            event={
+                "type": "shot_selection",
+                "status": "saved",
+                "count": len(ordered),
+                "warnings": warnings,
+                "stale_downstream": stale,
+            },
+        )
+        return {
+            "task_id": task.id,
+            "selection": ordered,
+            "warnings": warnings,
+            "status": task.status,
+        }
+
+    def generate_detail(self, task_id: str) -> dict[str, Any]:
+        """为所选镜头生成结构化详述；校验门不合格会回炉，最后如实返回结果。"""
+        task = self._load(task_id)
+        if task.creation_mode != "explore":
+            raise ValueError("该任务不是候选池模式")
+        if not task.selection:
+            raise ValueError("请先选择镜头（10 选 4）再生成详述")
+        by_id = {candidate.id: candidate for candidate in task.shot_candidates}
+        selected: list[dict[str, Any]] = []
+        for row in task.selection:
+            candidate = by_id.get(str(row.get("candidate_id")))
+            if candidate is None:
+                raise ValueError(f"候选已失效：{row.get('candidate_id')}")
+            selected.append({**candidate.to_dict(), "candidate_id": candidate.id})
+        try:
+            durations = detail_service.plan_detail_durations(
+                [float(item.get("duration_hint") or 5) for item in selected],
+                float(task.input.duration),
+            )
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+        style_ctx = {
+            "task_id": task.id,
+            "city": task.input.city,
+            "landmark": task.input.landmark,
+            "theme": task.input.theme,
+            "style": task.input.style,
+            "color": "#2d6c63",
+            "accent": "#d6ad60",
+            "subject_lock": task.input.subject_lock,
+            "subject_reference_path": task.input.subject_reference_path,
+            "subject_lock_required": bool(task.input.subject_lock),
+        }
+        outcome = self._call_llm_method(
+            task,
+            "detail",
+            {
+                "selected": selected,
+                "per_shot_seconds": durations,
+                "task_input": task.input.__dict__,
+                "style_ctx": style_ctx,
+            },
+        )
+        shots = [Shot(**item) for item in outcome.get("shots") or []]
+        # 转场沿用草稿阶段的默认多样化，用户仍可在编辑器里改
+        if len(shots) > 1 and len({shot.transition for shot in shots[1:]}) <= 1:
+            styles = ("smoothleft", "fade", "dissolve", "circleopen", "wipeleft")
+            for index, shot in enumerate(shots[1:]):
+                shot.transition = styles[index % len(styles)]
+        composed = detail_service.build_composed_prompts(
+            [shot.__dict__ for shot in shots], style_ctx
+        )
+        for shot in shots:
+            shot.composed_prompt = composed.get(shot.id, "")
+        task.shots = shots
+        task.title = str(outcome.get("title") or task.title)
+        task.summary = str(outcome.get("summary") or task.summary)
+        task.cta = str(outcome.get("cta") or task.cta)
+        task.narration = "".join(shot.narration for shot in shots)
+        event = dict(outcome.get("event") or {})
+        event.update({"type": "shot_detail", "status": "completed"})
+        gate = dict(outcome.get("gate") or {})
+        if not gate.get("ok"):
+            event["gate_problems"] = (gate.get("problems") or [])[:8]
+        self.update(task, status="draft", stage="preview", progress=35, event=event)
+        return {
+            "task_id": task.id,
+            "status": task.status,
+            "shot_count": len(shots),
+            "gate": gate,
+            "composed": composed,
+        }
+
+    def _call_llm_method(self, task: Task, method: str, context: dict[str, Any]) -> Any:
+        """按主 provider + 降级链调用 LLM 的扩展方法（candidates / detail）。"""
+        selected = self.settings.default_provider.lower()
+        candidates = [selected]
+        if self.settings.allow_provider_fallback:
+            candidates.extend(self.settings.llm_fallback_providers)
+        errors: list[str] = []
+        for candidate in dict.fromkeys(candidates):
+            try:
+                provider = self.registry.create("llm", candidate)
+            except Exception as exc:  # noqa: BLE001 - 记录后继续降级
+                errors.append(f"{candidate}: {exc}")
+                continue
+            fn = getattr(provider, method, None)
+            if fn is None:
+                errors.append(f"{candidate}: 不支持 {method}")
+                continue
+            with billing_scope(lambda event: self.update(task, event=event)):
+                return fn(context)
+        raise RuntimeError(f"没有可用的文本 provider 执行 {method}：{'; '.join(errors)}")
 
     def generate(self, task_id: str) -> dict[str, Any]:
         task = self._load(task_id)
@@ -370,9 +550,16 @@ class Orchestrator:
             billing_records=list(data.get("billing_records", [])),
             publication_observations=list(data.get("publication_observations", [])),
             execution_runs=list(data.get("execution_runs", [])),
+            creation_mode=str(data.get("creation_mode", "direct")),
+            selection=[dict(item) for item in (data.get("selection") or [])],
+            candidates_arc=dict(data.get("candidates_arc") or {}),
+            candidate_target=int(data.get("candidate_target") or 0),
         )
         task.shots = [Shot(**shot) for shot in data.get("shots", [])]
         task.assets = [AssetRecord(**asset) for asset in data.get("assets", [])]
+        task.shot_candidates = [
+            ShotCandidate(**candidate) for candidate in data.get("shot_candidates", [])
+        ]
         trace = data.get("trace")
         task.trace = TraceRecord(**trace) if trace else None
         return task
@@ -424,6 +611,7 @@ class Orchestrator:
             self.update(task, status="running", stage=selected_stage, progress=5)
             handlers: dict[str, Callable[[Task], None]] = {
                 "scripting": self._scripting,
+                "prompt_refine": self._prompt_refine,
                 "storyboard": self._storyboard,
                 "audio": self._audio,
                 "assets": self._assets,
@@ -509,6 +697,112 @@ class Orchestrator:
             stage="scripting",
             progress=27,
             event={"type": "stage", "stage": "scripting", "status": "completed"},
+        )
+
+    def _prompt_refine(self, task: Task) -> None:
+        """视觉 prompt 精修：脚本阶段顺手写的画面描述 → 五要素生成 prompt。
+
+        精修是增强不是关卡：provider 不支持（离线/模板/上游链路）、素材来源
+        不消费生成 prompt（offline/upload）、或精修调用失败时，一律跳过并如实
+        记录，任务带着原始 visual_prompt 继续跑。
+        """
+        self.update(
+            task,
+            stage="prompt_refine",
+            progress=28,
+            event={"type": "stage", "stage": "prompt_refine", "status": "started"},
+        )
+        asset_source = str(task.input.asset_source or "").lower()
+        if asset_source in {"offline", "upload"}:
+            self.update(
+                task,
+                stage="prompt_refine",
+                progress=31,
+                event={
+                    "type": "stage",
+                    "stage": "prompt_refine",
+                    "status": "skipped",
+                    "reason": f"素材来源 {asset_source} 不使用生成 prompt",
+                },
+            )
+            return
+        provider = None
+        refine_error = ""
+        try:
+            provider = self.registry.create("llm", self.settings.default_provider)
+        except Exception as exc:  # noqa: BLE001 - 精修不能阻断主流程
+            refine_error = str(exc)
+        if provider is None or not hasattr(provider, "refine_prompts"):
+            self.update(
+                task,
+                stage="prompt_refine",
+                progress=31,
+                event={
+                    "type": "stage",
+                    "stage": "prompt_refine",
+                    "status": "skipped",
+                    "reason": (
+                        f"文本 provider 不可用：{refine_error}"
+                        if provider is None
+                        else "文本 provider 不支持精修（模板/上游链路）"
+                    ),
+                },
+            )
+            return
+        shots_payload = [
+            {
+                "id": shot.id,
+                "order": shot.order,
+                "visual_prompt": shot.visual_prompt,
+                "narration": shot.narration,
+                "duration_sec": shot.duration_sec,
+            }
+            for shot in task.shots
+        ]
+        try:
+            with billing_scope(lambda event: self.update(task, event=event)):
+                outcome = provider.refine_prompts(shots_payload, task.input.__dict__)
+        except Exception as exc:  # noqa: BLE001 - 精修失败保留原 prompt 继续
+            self.update(
+                task,
+                stage="prompt_refine",
+                progress=31,
+                event={
+                    "type": "prompt_refine",
+                    "ok": False,
+                    "status": "failed",
+                    "error": str(exc),
+                },
+            )
+            return
+        refined_map = {str(item["id"]): item for item in outcome.get("refined", [])}
+        pairs: list[dict[str, str]] = []
+        applied = 0
+        for shot in task.shots:
+            item = refined_map.get(shot.id)
+            if not item:
+                continue
+            refined_text = str(item.get("visual_prompt", "")).strip()
+            if not refined_text or refined_text == shot.visual_prompt:
+                continue
+            pairs.append(
+                {"shot": shot.id, "original": shot.visual_prompt, "refined": refined_text}
+            )
+            shot.visual_prompt = refined_text
+            queries = [
+                str(query).strip()
+                for query in (item.get("search_queries") or [])
+                if str(query).strip()
+            ]
+            shot.search_queries = queries[:3]
+            applied += 1
+        event = dict(outcome.get("event") or {})
+        event.update({"status": "completed", "applied": applied, "prompt_pairs": pairs})
+        self.update(
+            task,
+            stage="prompt_refine",
+            progress=31,
+            event=event,
         )
 
     @staticmethod
@@ -719,6 +1013,10 @@ class Orchestrator:
         # 不用把已经付过费的那几镜重跑一遍。
         if errors:
             raise RuntimeError("; ".join(errors))
+        # 语义验收要在像素验收之前跑：重生成会替换素材，像素指标必须基于最终素材。
+        semantic_report = self._semantic_review(
+            task, directory, knowledge, style_ctx, candidates, strict_dynamic
+        )
         reviews = []
         for group, members in groups.items():
             try:
@@ -743,11 +1041,23 @@ class Orchestrator:
                 and getattr(self.settings, "visual_qa_strict", False)
             ),
         )
-        task.visual_qa = qa_report
+        task.visual_qa = (
+            semantic_qa.merge_into_visual_qa(qa_report, semantic_report)
+            if semantic_report is not None
+            else qa_report
+        )
         if getattr(self.settings, "visual_qa_enabled", True):
-            visual_qa.write_report(qa_report, self.settings.media_dir / task.id / "visual_qa.json")
+            visual_qa.write_report(task.visual_qa, self.settings.media_dir / task.id / "visual_qa.json")
         if getattr(self.settings, "visual_qa_strict", False) and not qa_report["passed"]:
             raise RuntimeError("视觉验收未通过: " + "; ".join(qa_report.get("failures") or []))
+        if (
+            semantic_report is not None
+            and getattr(self.settings, "semantic_qa_strict", False)
+            and semantic_report.get("blocking_shots")
+        ):
+            raise RuntimeError(
+                "语义验收未通过（镜头 " + ", ".join(semantic_report["blocking_shots"]) + "）"
+            )
         self.update(
             task,
             stage="assets",
@@ -762,6 +1072,240 @@ class Orchestrator:
                 "visual_qa_passed": qa_report["passed"],
             },
         )
+    def _semantic_review(
+        self,
+        task: Task,
+        directory: Path,
+        knowledge: dict[str, Any],
+        style_ctx: dict[str, Any],
+        candidates: tuple[str, ...],
+        strict_dynamic: bool,
+    ) -> dict[str, Any] | None:
+        """VLM 语义验收 + 失败自动重生成。返回报告或 None（未启用）。
+
+        只判定 AI 生成的镜头：图库/本地素材的内容归属由检索与授权门禁负责，
+        对它们做"是否符合分镜描述"的语义判定会把素材库的合理差异误判成失败。
+        未配置视觉模型时返回 unconfigured 报告，不冒充通过。
+        """
+        if not getattr(self.settings, "semantic_qa_enabled", True):
+            return semantic_qa.build_report(
+                status="skipped", reason="SEMANTIC_QA_ENABLED=false"
+            )
+        vision = build_vision_provider(self.settings)
+        if vision is None:
+            return semantic_qa.build_report(
+                status="unconfigured",
+                reason=(
+                    "未配置视觉模型：设置 VISION_MODEL（可选 VISION_BASE_URL/VISION_API_KEY，"
+                    "缺省回落 LLM_*）后启用语义验收"
+                ),
+            )
+        asset_by_shot = {asset.shot_id: asset for asset in task.assets}
+        targets = [
+            shot
+            for shot in task.shots
+            if shot.asset_local_path
+            and (asset := asset_by_shot.get(shot.id)) is not None
+            and asset.is_ai_generated
+        ]
+        if not targets:
+            return semantic_qa.build_report(
+                status="skipped", reason="本次没有 AI 生成镜头"
+            )
+        settings = self.settings
+        min_score = float(getattr(settings, "semantic_min_subject_score", 3.0) or 3.0)
+        frame_count = int(getattr(settings, "semantic_max_frames", 3) or 3)
+        check_location = bool(getattr(settings, "semantic_location_check", True))
+        min_coverage = float(getattr(settings, "semantic_min_coverage", 0.8) or 0.8)
+        subject_lock = str(task.input.subject_lock or "").strip() or (
+            f"{task.input.city}{task.input.landmark}的代表性主体及其可辨识轮廓、材质和标志性细节"
+        )
+        qa_root = directory.parent / "qa_frames"
+
+        def _judge(shot: Shot) -> dict[str, Any]:
+            try:
+                frames = semantic_qa.sample_frames(
+                    Path(shot.asset_local_path), frame_count, qa_root / shot.id
+                )
+                verdict = semantic_qa.judge_shot(
+                    vision,
+                    frames,
+                    order=shot.order,
+                    visual_prompt=shot.visual_prompt,
+                    narration=shot.narration,
+                    city=task.input.city,
+                    landmark=task.input.landmark,
+                    subject_lock=subject_lock,
+                    min_subject_score=min_score,
+                    check_location=check_location,
+                    intent_anchors=list(shot.intent_anchors or []),
+                    min_coverage=min_coverage,
+                )
+                return {
+                    "shot_id": shot.id,
+                    "order": shot.order,
+                    "frames": [str(frame) for frame in frames],
+                    "verdict": verdict,
+                }
+            except Exception as exc:  # noqa: BLE001 - 单镜判定失败不拖垮其余镜头
+                return {
+                    "shot_id": shot.id,
+                    "order": shot.order,
+                    "frames": [],
+                    "error": str(exc),
+                    "verdict": None,
+                }
+
+        results: list[dict[str, Any]] = []
+        workers = max(1, min(3, len(targets)))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(_judge, shot) for shot in targets]
+            for future in as_completed(futures):
+                results.append(future.result())
+        results.sort(key=lambda item: item["order"])
+        shot_by_id = {shot.id: shot for shot in task.shots}
+
+        regenerated: list[dict[str, Any]] = []
+        attempts_limit = int(getattr(settings, "semantic_regen_attempts", 1) or 0)
+        primary = candidates[0] if candidates else ""
+        can_regenerate = (
+            attempts_limit > 0
+            and primary in REGENERABLE_ASSET_PROVIDERS
+        )
+        for item in results:
+            verdict = item.get("verdict")
+            if not verdict or verdict.get("passed") or not can_regenerate:
+                continue
+            shot = shot_by_id[item["shot_id"]]
+            for attempt in range(1, attempts_limit + 1):
+                plan = self._plan_shot(task, shot)
+                payload = dict(plan["payload"])
+                payload["visual_prompt"] = (
+                    f"{shot.visual_prompt}\n\n{semantic_qa.regeneration_clause(verdict)}"
+                )
+                payload["seed_override"] = int(shot.asset_seed or 0) + 7919 * attempt
+                payload["selection_key"] = ""
+                outcome = self._generate_shot(
+                    task,
+                    {"shot": shot, "payload": payload},
+                    directory,
+                    knowledge,
+                    style_ctx,
+                    candidates[:1],
+                    True,
+                )
+                regenerated.append(
+                    {
+                        "shot_id": shot.id,
+                        "attempt": attempt,
+                        "ok": not outcome["error"],
+                        "error": outcome["error"],
+                        "reasons": verdict.get("reasons") or [],
+                    }
+                )
+                if outcome["error"] or not outcome["asset"]:
+                    continue
+                task.assets = [asset for asset in task.assets if asset.shot_id != shot.id]
+                self._commit_shot(task, shot, outcome["asset"])
+                try:
+                    frames = semantic_qa.sample_frames(
+                        Path(shot.asset_local_path),
+                        frame_count,
+                        qa_root / f"{shot.id}_retry{attempt}",
+                    )
+                    verdict = semantic_qa.judge_shot(
+                        vision,
+                        frames,
+                        order=shot.order,
+                        visual_prompt=shot.visual_prompt,
+                        narration=shot.narration,
+                        city=task.input.city,
+                        landmark=task.input.landmark,
+                        subject_lock=subject_lock,
+                        min_subject_score=min_score,
+                        check_location=check_location,
+                        intent_anchors=list(shot.intent_anchors or []),
+                        min_coverage=min_coverage,
+                    )
+                    item.update(
+                        {
+                            "frames": [str(frame) for frame in frames],
+                            "verdict": verdict,
+                            "regenerated_attempts": attempt,
+                        }
+                    )
+                except Exception as exc:  # noqa: BLE001 - 判定失败按未通过处理
+                    item.update({"error": str(exc), "regenerated_attempts": attempt})
+                if item["verdict"] and item["verdict"].get("passed"):
+                    break
+        # 重生成后仍不过的镜头：清掉画面指纹，下次「从素材阶段重试」会强制重生成，
+        # 而不是把已判失败的素材按"指纹未变"复用回来。
+        for item in results:
+            verdict = item.get("verdict")
+            if verdict and not verdict.get("passed"):
+                asset = next(
+                    (record for record in task.assets if record.shot_id == item["shot_id"]),
+                    None,
+                )
+                if asset is not None:
+                    asset.visual_fingerprint = f"semantic-failed:{asset.id}"
+        report = semantic_qa.build_report(
+            status="checked",
+            provider=vision.name,
+            model=vision.model,
+            shots=results,
+            regenerated=regenerated,
+        )
+        report["check_location"] = check_location
+        report["min_coverage"] = min_coverage
+        # 失败样本归档：语义不过的镜头连同判定帧与原因落盘，供按月复盘
+        failures = [
+            {
+                "shot_id": item.get("shot_id"),
+                "order": item.get("order"),
+                "anchors": list(
+                    getattr(shot_by_id.get(item.get("shot_id")), "intent_anchors", []) or []
+                ),
+                "frames": item.get("frames") or [],
+                "reasons": (item.get("verdict") or {}).get("reasons") or [],
+                "missing_anchors": (item.get("verdict") or {}).get("missing_anchors") or [],
+                "violations": (item.get("verdict") or {}).get("violations") or [],
+                "note": (item.get("verdict") or {}).get("note") or "",
+                "regenerated_attempts": item.get("regenerated_attempts", 0),
+            }
+            for item in results
+            if item.get("verdict") and not item["verdict"].get("passed")
+        ]
+        if failures:
+            archive = self.settings.media_dir / task.id / "qa_failures.json"
+            archive.parent.mkdir(parents=True, exist_ok=True)
+            archive.write_text(
+                json.dumps(
+                    {"task_id": task.id, "archived_at": now_iso(), "failures": failures},
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+        report["failure_archive"] = (
+            str(self.settings.media_dir / task.id / "qa_failures.json") if failures else ""
+        )
+        if task.trace:
+            task.trace.events.append(
+                {
+                    "type": "semantic_qa",
+                    "status": "checked",
+                    "model": vision.model,
+                    "judged": len(results),
+                    "passed": sum(
+                        1 for item in results if (item.get("verdict") or {}).get("passed")
+                    ),
+                    "blocking_shots": report["blocking_shots"],
+                    "regenerated": len(regenerated),
+                }
+            )
+        return report
+
     @staticmethod
     def _prompt_matches(existing: AssetRecord, shot: Shot) -> bool:
         """改完脚本再跑时，画面描述变了的镜头不能沿用旧素材。
@@ -857,6 +1401,9 @@ class Orchestrator:
         )
         if search_query:
             payload["search_query"] = search_query
+        # 精修产出的英文查询组优先于知识库泛化词：它带本镜的景观与活动细节
+        if shot.search_queries:
+            payload["search_query"] = "; ".join(shot.search_queries)
         return {"shot": shot, "payload": payload}
 
     def _generate_shot(
@@ -1119,6 +1666,7 @@ class Orchestrator:
                     duration=target,
                     catalog_path=self.settings.music_catalog_path,
                     music_dir=self.settings.music_dir,
+                    track_id=task.input.music_track_id,
                     cloud_enabled=self.settings.cloud_music_enabled,
                     output_dir=directory,
                 )
@@ -1376,6 +1924,20 @@ class Orchestrator:
                 shot.asset_media_type = record.media_type
         for key, value in validate_clip({**vars(shot), **patch}).items():
             setattr(shot, key, value)
+        # 审核 prompt 步骤允许直接修锚点与回避项（列表字段，前端用顿号/逗号分隔）
+        for key in ("intent_anchors", "must_avoid"):
+            if key in patch:
+                raw = patch[key]
+                if isinstance(raw, str):
+                    normalized = (
+                        raw.replace("，", ",").replace("、", ",")
+                        .replace("；", ",").replace(";", ",")
+                    )
+                    raw = normalized.split(",")
+                if not isinstance(raw, list):
+                    raise ValueError(f"{key} must be a list or a separated string")
+                items = [str(item).strip() for item in raw if str(item).strip()][:8]
+                setattr(shot, key, items)
         for key in ("title", "visual_prompt", "subtitle", "narration", "transition"):
             if key in patch:
                 value = str(patch[key]).strip()
